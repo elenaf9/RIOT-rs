@@ -4,6 +4,12 @@
 #![feature(used_with_arg)]
 
 use riot_rs::rt::debug::{exit, println};
+use riot_rs::embassy::{Builder, init_config};
+
+struct AppConfig;
+impl Builder for AppConfig {}
+
+init_config!(AppConfig);
 
 #[riot_rs::thread]
 fn main() {

@@ -5,13 +5,22 @@
 
 use embassy_time::Duration;
 use embassy_usb::class::hid::{self, HidReaderWriter};
-use riot_rs::embassy::{make_static, usb::UsbDriver};
+use riot_rs::embassy::{make_static, usb::UsbDriver, Config, Builder, init_config};
 use riot_rs::linkme::distributed_slice;
 use riot_rs::rt::debug::println;
 
 use usbd_hid::descriptor::KeyboardReport;
 
 mod pins;
+
+struct AppConfig;
+impl Builder for AppConfig {
+    fn build_config() -> Config {
+        Config::new().with_usb()
+    }
+}
+
+init_config!(AppConfig);
 
 // TODO: wrap in macro
 use riot_rs::embassy::delegate::Delegate;
