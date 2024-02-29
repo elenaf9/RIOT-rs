@@ -5,6 +5,10 @@
 #![feature(used_with_arg)]
 
 pub mod define_peripherals;
+pub mod config;
+pub use config::{Config, Builder};
+#[cfg(feature = "net")]
+pub use config::NetDevice;
 
 #[cfg_attr(context = "nrf52", path = "arch/nrf52.rs")]
 #[cfg_attr(context = "rp2040", path = "arch/rp2040.rs")]
@@ -23,8 +27,8 @@ pub mod network;
 #[cfg(feature = "wifi_cyw43")]
 mod wifi;
 
-#[cfg(feature = "net")]
-use core::cell::OnceCell;
+// #[cfg(feature = "net")]
+// use core::cell::OnceCell;
 
 // re-exports
 pub use linkme::{self, distributed_slice};
@@ -53,22 +57,58 @@ pub static EXECUTOR: arch::Executor = arch::Executor::new();
 #[distributed_slice]
 pub static EMBASSY_TASKS: [Task] = [..];
 
-#[distributed_slice(riot_rs_rt::INIT_FUNCS)]
-pub(crate) fn init() {
+/// Example Code with custom config:
+/// ```
+/// struct AppConfig;
+///
+/// impl Builder for AppConfig {
+///     fn build_config() -> Config {
+///         Config::new().with_usb(false)
+///     }
+/// }
+///
+/// init_config!(AppConfig)
+/// ```
+/// Without user config:
+/// ```
+/// init_config!()
+/// ````
+#[macro_export]
+macro_rules! init_config {
+    ($config:ty) => {
+        #[riot_rs::embassy::distributed_slice(riot_rs::rt::INIT_FUNCS)]
+        #[linkme(crate=riot_rs::embassy::linkme)]
+        fn init() {
+            let c = <$config>::build_config();
+            riot_rs::embassy::init(c);
+        }
+
+    };
+    () => {
+        #[riot_rs::embassy::distributed_slice(riot_rs::rt::INIT_FUNCS)]
+        #[linkme(crate=riot_rs::embassy::linkme)]
+        fn init() {
+            riot_rs::embassy::init(Config::default());
+        }
+    }
+}
+
+// #[distributed_slice(riot_rs_rt::INIT_FUNCS)]
+pub fn init(config: Config) {
     riot_rs_rt::debug::println!("riot-rs-embassy::init()");
     let p = arch::OptionalPeripherals::from(arch::init(Default::default()));
     EXECUTOR.start(arch::SWI);
-    EXECUTOR.spawner().spawn(init_task(p)).unwrap();
-
+    EXECUTOR.spawner().spawn(init_task(p, config)).unwrap();
     riot_rs_rt::debug::println!("riot-rs-embassy::init() done");
 }
 
+#[allow(unused_variables)]
 #[embassy_executor::task]
-async fn init_task(mut peripherals: arch::OptionalPeripherals) {
+async fn init_task(mut peripherals: arch::OptionalPeripherals, config: Config) {
     riot_rs_rt::debug::println!("riot-rs-embassy::init_task()");
 
     #[cfg(all(context = "nrf52", feature = "usb"))]
-    {
+    if config.with_usb {
         // nrf52840
         let clock: embassy_nrf::pac::CLOCK = unsafe { core::mem::transmute(()) };
 
@@ -83,14 +123,18 @@ async fn init_task(mut peripherals: arch::OptionalPeripherals) {
         task(&spawner, &mut peripherals);
     }
 
+
+    #[cfg(feature = "usb_ethernet")]
+    let mut usb_cdc_ecm = None;
+    
     #[cfg(feature = "usb")]
-    let mut usb_builder = {
+    if config.with_usb {
         let usb_config = usb::config();
 
         let usb_driver = arch::usb::driver(&mut peripherals);
 
         // Create embassy-usb DeviceBuilder using the driver and config.
-        let builder = usb::UsbBuilder::new(
+        let mut usb_builder = usb::UsbBuilder::new(
             usb_driver,
             usb_config,
             &mut make_static!([0; 256])[..],
@@ -100,60 +144,34 @@ async fn init_task(mut peripherals: arch::OptionalPeripherals) {
             &mut make_static!([0; 128])[..],
         );
 
-        builder
-    };
-
-    // Our MAC addr.
-    #[cfg(feature = "usb_ethernet")]
-    let our_mac_addr = [0xCA, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC];
-
-    #[cfg(feature = "usb_ethernet")]
-    let usb_cdc_ecm = {
-        // Host's MAC addr. This is the MAC the host "thinks" its USB-to-ethernet adapter has.
-        let host_mac_addr = [0x8A, 0x88, 0x88, 0x88, 0x88, 0x88];
-
-        use embassy_usb::class::cdc_ncm::{CdcNcmClass, State};
-
-        // Create classes on the builder.
-        CdcNcmClass::new(
-            &mut usb_builder,
-            make_static!(State::new()),
-            host_mac_addr,
-            64,
-        )
-    };
-
-    #[cfg(feature = "usb")]
-    {
+        // does this have to happen after the below usb_ethernet block?
         for hook in usb::USB_BUILDER_HOOKS {
             hook.lend(&mut usb_builder).await;
         }
+
+        #[cfg(all(feature = "net", feature = "usb_ethernet"))]
+        if let Some((NetDevice::UsbEthernet, _)) =  config.with_net {
+
+            // Host's MAC addr. This is the MAC the host "thinks" its USB-to-ethernet adapter has.
+            let host_mac_addr = [0x8A, 0x88, 0x88, 0x88, 0x88, 0x88];
+    
+            use embassy_usb::class::cdc_ncm::{CdcNcmClass, State};
+    
+            // Create classes on the builder.
+            usb_cdc_ecm = Some(CdcNcmClass::new(
+                &mut usb_builder,
+                make_static!(State::new()),
+                host_mac_addr,
+                64,
+            ));
+        }
+
         let usb = usb_builder.build();
         spawner.spawn(usb::usb_task(usb)).unwrap();
     }
 
-    #[cfg(feature = "usb_ethernet")]
-    let device = {
-        use embassy_usb::class::cdc_ncm::embassy_net::State as NetState;
-        let (runner, device) = usb_cdc_ecm
-            .into_embassy_net_device::<{ network::ETHERNET_MTU }, 4, 4>(
-                make_static!(NetState::new()),
-                our_mac_addr,
-            );
-
-        spawner.spawn(usb::ethernet::usb_ncm_task(runner)).unwrap();
-
-        device
-    };
-
-    #[cfg(feature = "wifi_cyw43")]
-    let (device, control) = {
-        let (net_device, control) = wifi::cyw43::device(&mut peripherals, &spawner).await;
-        (net_device, control)
-    };
-
     #[cfg(feature = "net")]
-    {
+    if let Some((device, config)) = config.with_net {
         use crate::network::STACK;
         use crate::sendcell::SendCell;
         use embassy_net::{Stack, StackResources};
@@ -164,7 +182,6 @@ async fn init_task(mut peripherals: arch::OptionalPeripherals) {
             "maximum number of concurrent sockets allowed by the network stack"
         );
 
-        let config = network::config();
 
         // Generate random seed
         // let mut rng = Rng::new(p.RNG, Irqs);
@@ -172,6 +189,31 @@ async fn init_task(mut peripherals: arch::OptionalPeripherals) {
         // rng.blocking_fill_bytes(&mut seed);
         // let seed = u64::from_le_bytes(seed);
         let seed = 1234u64;
+
+        let device = match device {
+            #[cfg(feature = "usb_ethernet")]
+            NetDevice::UsbEthernet => {
+                use embassy_usb::class::cdc_ncm::embassy_net::State as NetState;
+
+                // Our MAC addr.
+                let our_mac_addr = [0xCA, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC];
+                
+                let (runner, device) = usb_cdc_ecm.expect("usb_ethernet feature is enabled.")
+                    .into_embassy_net_device::<{ network::ETHERNET_MTU }, 4, 4>(
+                        make_static!(NetState::new()),
+                        our_mac_addr,
+                    );
+        
+                spawner.spawn(usb::ethernet::usb_ncm_task(runner)).unwrap();
+                device
+            },
+            #[cfg(feature = "wifi_cyw43")]
+            NetDevice::WifiCyw43 => {
+                let (device, control) = wifi::cyw43::device(&mut peripherals, &spawner).await;
+                wifi::cyw43::join(control).await;
+                device
+            }
+        };
 
         // Init network stack
         let stack = &*make_static!(Stack::new(
@@ -190,11 +232,6 @@ async fn init_task(mut peripherals: arch::OptionalPeripherals) {
             unreachable!();
         }
     }
-
-    #[cfg(feature = "wifi_cyw43")]
-    {
-        wifi::cyw43::join(control).await;
-    };
 
     // mark used
     let _ = peripherals;
