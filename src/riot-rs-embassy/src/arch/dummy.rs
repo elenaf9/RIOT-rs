@@ -1,50 +1,55 @@
 //! Dummy module used to satisfy platform-independent tooling.
 
-/// Dummy type.
-///
-/// See the `OptionalPeripherals` type of your Embassy architecture crate instead.
-#[derive(Default)]
-pub struct OptionalPeripherals;
+use core::future::{self, Future};
 
-/// Dummy type.
-pub struct Peripherals;
+use embassy_executor::SpawnError;
 
-impl From<Peripherals> for OptionalPeripherals {
-    fn from(_peripherals: Peripherals) -> Self {
-        Self {}
+use super::{Execute, Spawn};
+
+
+pub struct DummyExecutor;
+
+impl Execute for DummyExecutor {
+    type Spawner = DummySpawner;
+    type SWI = ();
+    type Peripherals = ();
+    type OptionalPeripherals = ();
+    #[cfg(feature = "usb")]
+    type UsbDriver = ();
+
+    fn new() -> Self {
+        DummyExecutor
+    }
+
+    fn init(_: Self::OptionalPeripherals) -> Self::Peripherals {
+        ()
+    }
+
+    fn swi() -> Self::SWI {
+        ()
+    }
+
+    fn spawner(&self) -> Self::Spawner {
+        DummySpawner
+    }
+
+    fn start(&self, _: Self::SWI) {}
+
+    #[cfg(feature = "usb")]
+    fn driver(peripherals: &mut Self::OptionalPeripherals) -> Self::UsbDriver {
+        ()
     }
 }
 
-mod executor {
-    use embassy_executor::SpawnToken;
+pub struct DummySpawner;
 
-    pub struct Executor;
+impl Spawn for DummySpawner {
 
-    impl Executor {
-        pub const fn new() -> Self {
-            Self {}
-        }
-
-        pub fn start(&self, _: super::SWI) {}
-
-        pub fn spawner(&self) -> Spawner {
-            Spawner {}
-        }
+    fn spawn<S: Send>(&self, _: embassy_executor::SpawnToken<S>) -> Result<(), SpawnError> {
+        Ok(())
     }
 
-    pub struct Spawner {}
-
-    impl Spawner {
-        #[allow(clippy::result_unit_err)]
-        pub fn spawn<S>(&self, _token: SpawnToken<S>) -> Result<(), ()> {
-            Ok(())
-        }
+    fn for_current_executor() -> impl Future<Output = Self> {
+        future::ready(DummySpawner)
     }
 }
-pub use executor::{Executor, Spawner};
-
-pub fn init(_: OptionalPeripherals) -> Peripherals {
-    Peripherals {}
-}
-
-pub struct SWI;

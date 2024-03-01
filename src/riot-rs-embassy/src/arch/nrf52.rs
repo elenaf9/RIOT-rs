@@ -1,10 +1,14 @@
-pub(crate) use embassy_executor::InterruptExecutor as Executor;
-pub use embassy_nrf::interrupt::SWI0_EGU0 as SWI;
-pub use embassy_nrf::{init, OptionalPeripherals};
+pub(crate) use embassy_executor::{InterruptExecutor, SendSpawner, SpawnToken};
+pub use embassy_nrf::interrupt::SWI0_EGU0;
+pub use embassy_nrf::{init, OptionalPeripherals, Peripherals};
 pub use embassy_nrf::{interrupt, peripherals};
-
 #[cfg(feature = "usb")]
-use embassy_nrf::{bind_interrupts, rng, usb as nrf_usb};
+use embassy_nrf::{
+    peripherals,
+    usb::{vbus_detect::HardwareVbusDetect, Driver},
+    bind_interrupts, rng, usb as nrf_usb
+};
+use super::{Execute, Spawn};
 
 #[cfg(feature = "usb")]
 bind_interrupts!(struct Irqs {
@@ -18,20 +22,37 @@ unsafe fn SWI0_EGU0() {
     crate::EXECUTOR.on_interrupt()
 }
 
-#[cfg(feature = "usb")]
-pub mod usb {
-    use embassy_nrf::{
-        peripherals,
-        usb::{vbus_detect::HardwareVbusDetect, Driver},
-    };
+impl Execute for InterruptExecutor {
+    type SWI = SWI0_EGU0;
+    type OptionalPeripherals = OptionalPeripherals;
+    type Spawner = SendSpawner;
+    type Peripherals = Peripherals;
+    #[cfg(feature = "usb")]
+    type UsbDriver = Driver<'static, peripherals::USBD, HardwareVbusDetect>;
 
-    use crate::arch;
+    
+    fn new() -> Self {
+        InterruptExecutor::new()
+    }
+    
+    fn init(op: Self::OptionalPeripherals) -> Peripherals {
+        InterruptExecutor::init(op)
+    }
 
-    pub type UsbDriver = Driver<'static, peripherals::USBD, HardwareVbusDetect>;
+    fn start(&self, swi: Self::SWI) {
+        InterruptExecutor::start(&self, swi)
+    }
 
-    pub fn driver(peripherals: &mut arch::OptionalPeripherals) -> UsbDriver {
-        use super::Irqs;
+    fn swi() -> Self::SWI {
+        SWI0_EGU0
+    }
 
+    fn spawner(&self) -> Self::Spawner {
+        self.0.spawner
+    } 
+
+    #[cfg(feature = "usb")]
+    fn driver(peripherals: &mut Self::OptionalPeripherals) -> Self::UsbDriver {
         let usbd = peripherals.USBD.take().unwrap();
         Driver::new(usbd, Irqs, HardwareVbusDetect::new(Irqs))
     }

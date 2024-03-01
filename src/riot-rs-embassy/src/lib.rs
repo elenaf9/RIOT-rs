@@ -6,12 +6,6 @@
 
 pub mod define_peripherals;
 
-#[cfg_attr(context = "nrf52", path = "arch/nrf52.rs")]
-#[cfg_attr(context = "rp2040", path = "arch/rp2040.rs")]
-#[cfg_attr(
-    not(any(context = "nrf52", context = "rp2040")),
-    path = "arch/dummy.rs"
-)]
 pub mod arch;
 
 #[cfg(feature = "usb")]
@@ -30,8 +24,6 @@ use core::cell::OnceCell;
 pub use linkme::{self, distributed_slice};
 pub use static_cell::make_static;
 
-pub use embassy_executor::Spawner;
-
 #[cfg(feature = "usb_ethernet")]
 use usb::ethernet::NetworkDevice;
 
@@ -46,9 +38,11 @@ pub mod blocker;
 pub mod delegate;
 pub mod sendcell;
 
-pub type Task = fn(&Spawner, &mut arch::OptionalPeripherals);
+use arch::{Executor, Execute, Spawn};
 
-pub static EXECUTOR: arch::Executor = arch::Executor::new();
+pub type Task = fn(&<Executor as Execute>::Spawner, &mut <Executor as Execute>::OptionalPeripherals);
+
+pub static mut EXECUTOR: Option<Executor> = None;
 
 #[distributed_slice]
 pub static EMBASSY_TASKS: [Task] = [..];
@@ -56,15 +50,18 @@ pub static EMBASSY_TASKS: [Task] = [..];
 #[distributed_slice(riot_rs_rt::INIT_FUNCS)]
 pub(crate) fn init() {
     riot_rs_rt::debug::println!("riot-rs-embassy::init()");
-    let p = arch::OptionalPeripherals::from(arch::init(Default::default()));
-    EXECUTOR.start(arch::SWI);
-    EXECUTOR.spawner().spawn(init_task(p)).unwrap();
+    let p = <Executor as Execute>::OptionalPeripherals::from(<Executor as Execute>::init(Default::default()));
+    unsafe {
+        EXECUTOR.replace(<Executor as Execute>::new());
+        EXECUTOR.as_ref().expect("was initialized").start(<Executor as Execute>::swi());
+        EXECUTOR.as_ref().expect("was initialized").spawner().spawn(init_task(p)).unwrap();
+    }
 
     riot_rs_rt::debug::println!("riot-rs-embassy::init() done");
 }
 
 #[embassy_executor::task]
-async fn init_task(mut peripherals: arch::OptionalPeripherals) {
+async fn init_task(mut peripherals: <Executor as Execute>::OptionalPeripherals) {
     riot_rs_rt::debug::println!("riot-rs-embassy::init_task()");
 
     #[cfg(all(context = "nrf52", feature = "usb"))]
@@ -77,7 +74,7 @@ async fn init_task(mut peripherals: arch::OptionalPeripherals) {
         while clock.events_hfclkstarted.read().bits() != 1 {}
     }
 
-    let spawner = Spawner::for_current_executor().await;
+    let spawner = <Executor as Execute>::Spawner::for_current_executor().await;
 
     for task in EMBASSY_TASKS {
         task(&spawner, &mut peripherals);
@@ -87,7 +84,7 @@ async fn init_task(mut peripherals: arch::OptionalPeripherals) {
     let mut usb_builder = {
         let usb_config = usb::config();
 
-        let usb_driver = arch::usb::driver(&mut peripherals);
+        let usb_driver = <Executor as Execute>::driver(&mut peripherals);
 
         // Create embassy-usb DeviceBuilder using the driver and config.
         let builder = usb::UsbBuilder::new(
