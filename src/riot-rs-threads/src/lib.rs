@@ -10,6 +10,7 @@ pub use riot_rs_runqueue::{RunqueueId, ThreadId};
 
 mod arch;
 mod ensure_once;
+mod scheduler;
 mod thread;
 mod threadlist;
 

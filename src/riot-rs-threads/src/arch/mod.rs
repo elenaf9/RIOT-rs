@@ -20,6 +20,12 @@ pub trait Arch {
 
     /// Setup and initiate the first context switch.
     fn start_threading(next_sp: usize);
+
+    /// Manually write the pointers to thread data into the registers, as ABI would return the values via stack.
+    fn return_data_in_regs(old_data: Option<&Self::ThreadData>, new_data: &Self::ThreadData);
+
+    /// Wait until an interrupt occurs.
+    fn wfi();
 }
 
 cfg_if::cfg_if! {
@@ -40,6 +46,12 @@ cfg_if::cfg_if! {
                 unimplemented!()
             }
             fn schedule() {
+                unimplemented!()
+            }
+            fn wfi() {
+                unimplemented!()
+            }
+            fn return_data_in_regs(_: Option<&Self::ThreadData>, _: &Self::ThreadData) {
                 unimplemented!()
             }
         }

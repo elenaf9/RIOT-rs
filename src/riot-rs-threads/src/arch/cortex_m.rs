@@ -72,6 +72,26 @@ impl Arch for Cpu {
             in("r1")next_sp);
         }
     }
+
+    #[inline(always)]
+    fn wfi() {
+        unsafe {
+            //pm_set_lowest();
+            cortex_m::asm::wfi();
+            cortex_m::interrupt::enable();
+            cortex_m::asm::isb();
+            // pending interrupts would now get to run their ISRs
+            cortex_m::interrupt::disable();
+        }
+    }
+
+    #[inline(always)]
+    fn return_data_in_regs(current_data: Option<&Self::ThreadData>, next_data: &Self::ThreadData) {
+        let current_data_ptr = current_data.map_or_else(core::ptr::null, |d| d.as_ptr());
+        unsafe {
+            asm!("", in("r1") current_data_ptr, in("r2") next_data.as_ptr());
+        }
+    }
 }
 
 #[cfg(armv7m)]
@@ -123,7 +143,7 @@ unsafe extern "C" fn PendSV() {
         "
             mrs r0, psp
             cpsid i
-            bl {sched}
+            bl {sched_trampoline}
             cpsie i
             cmp r0, #0
             /* label rules:
@@ -141,7 +161,7 @@ unsafe extern "C" fn PendSV() {
             movt LR, #0xFFFF
             bx LR
             ",
-        sched = sym sched,
+        sched_trampoline = sym sched_trampoline,
         options(noreturn)
     );
 }
@@ -155,7 +175,7 @@ unsafe extern "C" fn PendSV() {
         "
             mrs r0, psp
             cpsid i
-            bl sched
+            bl sched_trampoline
             cpsie i
             cmp r0, #0
             beq 99f
@@ -198,71 +218,12 @@ unsafe extern "C" fn PendSV() {
     );
 }
 
-/// Schedule the next thread.
-///
-/// It selects the next thread that should run from the runqueue.
-/// This may be current thread, or a new one.
-///
-/// Input:
-/// - old_sp (`r0`): the stack pointer of the currently running thread.
-///
-/// Returns:
-/// - `0` in `r0` if the next thread in the runqueue is the currently running thread
-/// - Else it writes into the following registers:
-///   - `r1`: pointer to [`Thread::high_regs`] from old thread (to store old register state)
-///   - `r2`: pointer to [`Thread::high_regs`] from new thread (to load new register state)
-///   - `r0`: stack-pointer for new thread
+/// Trampoline to the scheduler function.
 ///
 /// This function is called in PendSV.
-// TODO: make arch independent, or move to arch
+//
+// TODO: Directly jump to `scheduler::sched` from asm code?
 #[no_mangle]
-unsafe fn sched(old_sp: usize) -> usize {
-    let cs = CriticalSection::new();
-    let next_pid;
-
-    loop {
-        {
-            if let Some(pid) = (&*THREADS.as_ptr(cs)).runqueue.get_next() {
-                next_pid = pid;
-                break;
-            }
-        }
-        //pm_set_lowest();
-        cortex_m::asm::wfi();
-        cortex_m::interrupt::enable();
-        cortex_m::asm::isb();
-        // pending interrupts would now get to run their ISRs
-        cortex_m::interrupt::disable();
-    }
-
-    let threads = &mut *THREADS.as_ptr(cs);
-    let current_high_regs;
-
-    if let Some(current_pid) = threads.current_pid() {
-        if next_pid == current_pid {
-            return 0;
-        }
-        //println!("current: {} next: {}", current_pid, next_pid);
-        threads.threads[current_pid as usize].sp = old_sp;
-        threads.current_thread = Some(next_pid);
-        current_high_regs = threads.threads[current_pid as usize].data.as_ptr();
-    } else {
-        current_high_regs = core::ptr::null();
-    }
-
-    let next = &threads.threads[next_pid as usize];
-    let next_sp = next.sp;
-    let next_high_regs = next.data.as_ptr();
-
-    //println!("old_sp: {:x} next.sp: {:x}", old_sp, next_sp);
-
-    // PendSV expects these three pointers in r0, r1 and r2:
-    // r1= &current.high_regs
-    // r2= &next.high_regs
-    // r0 = &next.sp (implicitly done here via return value)
-    //
-    // write to registers manually, as ABI would return the values via stack
-    asm!("", in("r1") current_high_regs, in("r2") next_high_regs);
-
-    next_sp
+unsafe fn sched_trampoline(old_sp: usize) -> usize {
+    unsafe { crate::scheduler::sched(old_sp) }
 }
