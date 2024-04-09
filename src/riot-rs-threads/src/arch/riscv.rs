@@ -1,4 +1,4 @@
-use crate::{cleanup, Arch, Thread, THREADS};
+use crate::{cleanup, Arch, Multicore, Thread, THREADS};
 #[cfg(context = "esp32c6")]
 use esp_hal::peripherals::INTPRI as SYSTEM;
 #[cfg(context = "esp32c3")]
@@ -8,6 +8,7 @@ use esp_hal::{
     peripherals::Interrupt,
     riscv, Cpu as EspHalCpu,
 };
+use riot_rs_runqueue::GlobalRunqueue as _;
 
 pub struct Cpu;
 
@@ -45,6 +46,10 @@ impl Arch for Cpu {
         // Panics if `FROM_CPU_INTR0` is among `esp_hal::interrupt::RESERVED_INTERRUPTS`,
         // which isn't the case.
         interrupt::enable(Interrupt::FROM_CPU_INTR0, interrupt::Priority::min()).unwrap();
+    }
+
+    fn wfi() {
+        riscv::asm::wfi();
     }
 }
 
@@ -123,12 +128,13 @@ extern "C" fn FROM_CPU_INTR0(trap_frame: &mut TrapFrame) {
 /// It should only be called from inside the trap handler that is responsible for
 /// context switching.
 unsafe fn sched(trap_frame: &mut TrapFrame) {
+    let core = crate::smp::Chip::core_id();
     loop {
         if THREADS.with_mut(|mut threads| {
-            let next_pid = match threads.runqueue.get_next() {
+            let next_pid = match threads.runqueue.get_next(core) {
                 Some(pid) => pid,
                 None => {
-                    riscv::asm::wfi();
+                    Cpu::wfi();
                     return false;
                 }
             };
@@ -142,7 +148,7 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
                     &mut threads.threads[usize::from(current_pid)].data,
                 );
             }
-            threads.current_thread = Some(next_pid);
+            *threads.current_pid_mut() = Some(next_pid);
             copy_registers(&threads.threads[usize::from(next_pid)].data, trap_frame);
             true
         }) {
