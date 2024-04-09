@@ -2,6 +2,7 @@
 #![feature(inline_const)]
 #![feature(naked_functions)]
 #![feature(used_with_arg)]
+#![feature(type_alias_impl_trait)]
 // Disable indexing lints for now, possible panics are documented or rely on internally-enforced
 // invariants
 #![allow(clippy::indexing_slicing)]
@@ -11,6 +12,7 @@ pub use riot_rs_runqueue::{RunqueueId, ThreadId};
 
 mod arch;
 mod ensure_once;
+mod smp;
 mod thread;
 mod threadlist;
 
@@ -19,6 +21,7 @@ pub mod lock;
 pub mod thread_flags;
 
 pub use arch::schedule;
+use smp::Multicore;
 pub use thread::{Thread, ThreadState};
 pub use thread_flags as flags;
 pub use threadlist::ThreadList;
@@ -31,6 +34,8 @@ pub const SCHED_PRIO_LEVELS: usize = 12;
 
 /// a global defining the number of threads that can be created
 pub const THREADS_NUMOF: usize = 16;
+
+pub const CORES_NUMOF: usize = smp::Chip::CORES as usize;
 
 pub(crate) static THREADS: EnsureOnce<Threads> = EnsureOnce::new(Threads::new());
 
@@ -49,7 +54,7 @@ pub struct Threads {
     /// resource access.
     thread_blocklist: [Option<ThreadId>; THREADS_NUMOF],
     /// The currently running thread.
-    current_thread: Option<ThreadId>,
+    current_threads: [Option<ThreadId>; CORES_NUMOF],
 }
 
 impl Threads {
@@ -58,7 +63,7 @@ impl Threads {
             runqueue: RunQueue::new(),
             threads: [const { Thread::default() }; THREADS_NUMOF],
             thread_blocklist: [const { None }; THREADS_NUMOF],
-            current_thread: None,
+            current_threads: [None; CORES_NUMOF],
         }
     }
 
@@ -71,12 +76,11 @@ impl Threads {
     ///
     /// Returns `None` if there is no current thread.
     pub(crate) fn current(&mut self) -> Option<&mut Thread> {
-        self.current_thread
-            .map(|tid| &mut self.threads[tid as usize])
+        self.current_threads[cpuid()].map(|tid| &mut self.threads[tid as usize])
     }
 
     pub fn current_pid(&self) -> Option<ThreadId> {
-        self.current_thread
+        self.current_threads[cpuid()]
     }
 
     /// Creates a new thread.
@@ -180,6 +184,7 @@ impl Threads {
 /// Currently it expects at least:
 /// - Cortex-M: to be called from the reset handler while MSP is active
 pub unsafe fn start_threading() {
+    smp::Chip::startup_cores();
     Cpu::start_threading();
 }
 
@@ -248,7 +253,7 @@ pub unsafe fn thread_create_raw(
 }
 
 /// Returns the [`ThreadState`] for this `thread_id`.
-///
+///cpuid
 /// Returns `None` if `thread_id` is out of bound or no thread with
 /// valid state exists.
 pub fn get_state(thread_id: ThreadId) -> Option<ThreadState> {
@@ -261,6 +266,11 @@ pub fn get_state(thread_id: ThreadId) -> Option<ThreadState> {
 /// that was interrupted.
 pub fn current_pid() -> Option<ThreadId> {
     THREADS.with(|threads| threads.current_pid())
+}
+
+/// Returns the id of the CPU that this thread is running on.
+pub fn cpuid() -> usize {
+    smp::Chip::cpuid() as usize
 }
 
 /// Checks if a given [`ThreadId`] is valid
