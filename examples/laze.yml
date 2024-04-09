@@ -20,3 +20,4 @@ subdirs:
   - threading
   - threading-channel
   - usb-serial
+  - threading-multicore
