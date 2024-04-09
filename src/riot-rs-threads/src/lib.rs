@@ -32,6 +32,7 @@
 mod arch;
 mod autostart_thread;
 mod ensure_once;
+mod smp;
 mod thread;
 mod threadlist;
 
@@ -55,6 +56,7 @@ pub use arch::schedule;
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::{GlobalRunqueue, RunQueue};
+use smp::{sev, Multicore};
 use thread::{Thread, ThreadState};
 
 /// The number of possible priority levels.
@@ -62,6 +64,8 @@ pub const SCHED_PRIO_LEVELS: usize = 12;
 
 /// The maximum number of concurrent threads that can be created.
 pub const THREADS_NUMOF: usize = 16;
+
+pub const CORES_NUMOF: usize = smp::Chip::CORES as usize;
 
 static THREADS: EnsureOnce<Threads> = EnsureOnce::new(Threads::new());
 
@@ -73,14 +77,14 @@ pub static THREAD_FNS: [ThreadFn] = [..];
 /// Struct holding all scheduler state
 struct Threads {
     /// Global thread runqueue.
-    runqueue: RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>,
+    runqueue: RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF, CORES_NUMOF>,
     /// The actual TCBs.
     threads: [Thread; THREADS_NUMOF],
     /// `Some` when a thread is blocking another thread due to conflicting
     /// resource access.
     thread_blocklist: [Option<ThreadId>; THREADS_NUMOF],
     /// The currently running thread.
-    current_thread: Option<ThreadId>,
+    current_threads: [Option<ThreadId>; CORES_NUMOF],
 }
 
 impl Threads {
@@ -89,7 +93,7 @@ impl Threads {
             runqueue: RunQueue::new(),
             threads: [const { Thread::default() }; THREADS_NUMOF],
             thread_blocklist: [const { None }; THREADS_NUMOF],
-            current_thread: None,
+            current_threads: [None; CORES_NUMOF],
         }
     }
 
@@ -102,12 +106,16 @@ impl Threads {
     ///
     /// Returns `None` if there is no current thread.
     fn current(&mut self) -> Option<&mut Thread> {
-        self.current_thread
+        self.current_pid()
             .map(|tid| &mut self.threads[usize::from(tid)])
     }
 
     fn current_pid(&self) -> Option<ThreadId> {
-        self.current_thread
+        self.current_threads[usize::from(core_id())]
+    }
+
+    fn current_pid_mut(&mut self) -> &mut Option<ThreadId> {
+        &mut self.current_threads[usize::from(core_id())]
     }
 
     /// Creates a new thread.
@@ -183,17 +191,17 @@ impl Threads {
     /// # Panics
     ///
     /// Panics if `pid` is >= [`THREADS_NUMOF`].
-    fn set_state(&mut self, pid: ThreadId, state: ThreadState) -> ThreadState {
+    fn set_state(&mut self, pid: ThreadId, state: ThreadState) -> (ThreadState, Option<CoreId>) {
         let thread = &mut self.threads[usize::from(pid)];
         let old_state = thread.state;
         thread.state = state;
-        if old_state != ThreadState::Running && state == ThreadState::Running {
-            self.runqueue.add(thread.pid, thread.prio);
-        } else if old_state == ThreadState::Running && state != ThreadState::Running {
-            self.runqueue.pop_head(thread.pid, thread.prio);
-        }
-
-        old_state
+        let core = match (old_state, state) {
+            (old, new) if old == new => None,
+            (_, ThreadState::Running) => self.runqueue.add(thread.pid, thread.prio),
+            (ThreadState::Running, _) => self.runqueue.del(thread.pid, thread.prio),
+            _ => None,
+        };
+        (old_state, core)
     }
 
     /// Returns the state of a thread.
@@ -249,6 +257,7 @@ impl Threads {
 /// Currently it expects at least:
 /// - Cortex-M: to be called from the reset handler while MSP is active
 pub unsafe fn start_threading() {
+    smp::Chip::startup_cores();
     Cpu::start_threading();
 }
 
@@ -336,6 +345,11 @@ pub fn current_pid() -> Option<ThreadId> {
     THREADS.with(|threads| threads.current_pid())
 }
 
+/// Returns the id of the CPU that this thread is running on.
+pub fn core_id() -> CoreId {
+    smp::Chip::core_id() as CoreId
+}
+
 /// Checks if a given [`ThreadId`] is valid.
 pub fn is_valid_pid(thread_id: ThreadId) -> bool {
     THREADS.with(|threads| threads.is_valid_pid(thread_id))
@@ -390,8 +404,10 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
     THREADS.with_mut(|mut threads| {
         if let Some(state) = threads.get_state(thread_id) {
             if state == ThreadState::Paused {
-                threads.set_state(thread_id, ThreadState::Running);
-                schedule();
+                if let Some(_core_id) = threads.set_state(thread_id, ThreadState::Running).1 {
+                    schedule();
+                    sev();
+                }
                 true
             } else {
                 false

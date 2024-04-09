@@ -3,8 +3,9 @@ use esp_hal::{
     peripherals::{Interrupt, SYSTEM},
     trapframe::TrapFrame,
 };
+use riot_rs_runqueue::GlobalRunqueue as _;
 
-use crate::{cleanup, Arch, THREADS};
+use crate::{cleanup, Arch, Multicore, THREADS};
 
 pub struct Cpu;
 
@@ -50,6 +51,10 @@ impl Arch for Cpu {
         // Panics if `FROM_CPU_INTR1` is among `esp_hal::interrupt::RESERVED_INTERRUPTS`,
         // which isn't the case.
         interrupt::enable(Interrupt::FROM_CPU_INTR1, interrupt::Priority::min()).unwrap();
+    }
+
+    fn wfi() {
+        unsafe { core::arch::asm!("waiti 0") };
     }
 }
 
@@ -114,9 +119,10 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 /// It should only be called from inside the trap handler that is responsible for
 /// context switching.
 unsafe fn sched(trap_frame: &mut TrapFrame) {
+    let core = crate::smp::Chip::core_id();
     loop {
         if THREADS.with_mut(|mut threads| {
-            let Some(next_pid) = threads.runqueue.get_next() else {
+            let Some(next_pid) = threads.runqueue.get_next(core) else {
                 return false;
             };
 
@@ -126,7 +132,7 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
                 }
                 threads.threads[usize::from(current_pid)].data = *trap_frame;
             }
-            threads.current_thread = Some(next_pid);
+            *threads.current_pid_mut() = Some(next_pid);
             *trap_frame = threads.threads[usize::from(next_pid)].data;
             true
         }) {
@@ -135,6 +141,6 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
         // The esp-hal implementation of critical-section doesn't disable all interrupts.
         // Thus we should release our hold on `THREADS` before we `waiti`, to prevent
         // that another interrupt handler will try to borrow it while we still have it borrowed.
-        unsafe { core::arch::asm!("waiti 0") };
+        crate::smp::Chip::wait_for_wakeup();
     }
 }

@@ -1,9 +1,9 @@
 use core::arch::asm;
 use core::ptr::write_volatile;
-use cortex_m::peripheral::SCB;
+use cortex_m::peripheral::{scb::SystemHandler, SCB};
 use riot_rs_runqueue::GlobalRunqueue as _;
 
-use crate::{cleanup, Arch, CoreId, Thread, THREADS};
+use crate::{cleanup, smp::Multicore, Arch, Thread, THREADS};
 
 #[cfg(not(any(armv6m, armv7m, armv8m)))]
 compile_error!("no supported ARM variant selected");
@@ -62,7 +62,20 @@ impl Arch for Cpu {
 
     #[inline(always)]
     fn start_threading() {
+        unsafe {
+            // Make sure PendSV has a low priority.
+            let mut p = cortex_m::Peripherals::steal();
+            p.SCB.set_priority(SystemHandler::PendSV, 0xFF);
+        }
         Self::schedule();
+    }
+
+    fn wfi() {
+        // see https://cliffle.com/blog/stm32-wfi-bug/
+        #[cfg(context = "stm32")]
+        cortex_m::asm::isb();
+
+        cortex_m::asm::wfi();
     }
 }
 
@@ -182,24 +195,11 @@ unsafe extern "C" fn PendSV() {
 // TODO: make arch independent, or move to arch
 #[no_mangle]
 unsafe fn sched() -> u128 {
-    let core = CoreId::new(0);
+    let core = crate::smp::Chip::core_id();
     loop {
         if let Some(res) = critical_section::with(|cs| {
             let threads = unsafe { &mut *THREADS.as_ptr(cs) };
-            let next_pid = match threads.runqueue.get_next(core) {
-                Some(pid) => pid,
-                None => {
-                    cortex_m::asm::wfi();
-
-                    // see https://cliffle.com/blog/stm32-wfi-bug/
-                    #[cfg(context = "stm32")]
-                    cortex_m::asm::isb();
-
-                    // this fence seems necessary, see #310.
-                    core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
-                    return None;
-                }
-            };
+            let next_pid = threads.runqueue.get_next(core)?;
 
             // `current_high_regs` will be null if there is no current thread.
             // This is only the case once, when the very first thread starts running.
@@ -216,7 +216,7 @@ unsafe fn sched() -> u128 {
                 current_high_regs = current.data.as_ptr();
             }
 
-            threads.current_thread = Some(next_pid);
+            *threads.current_pid_mut() = Some(next_pid);
 
             let next = &threads.threads[usize::from(next_pid)];
             let next_sp = next.sp;
@@ -235,5 +235,6 @@ unsafe fn sched() -> u128 {
         }) {
             break res;
         }
+        crate::smp::Chip::wait_for_wakeup();
     }
 }
