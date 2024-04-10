@@ -2,7 +2,7 @@
 #![feature(lint_reasons)]
 
 mod runqueue;
-pub use runqueue::{RunQueue, RunqueueId, ThreadId};
+pub use runqueue::{CoreId, RunQueue, RunqueueId, ThreadId};
 
 #[cfg(test)]
 mod tests {
