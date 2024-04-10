@@ -46,7 +46,7 @@ pub mod macro_reexports {
     pub use static_cell;
 }
 
-pub use riot_rs_runqueue::{RunqueueId, ThreadId};
+pub use riot_rs_runqueue::{CoreId, RunqueueId, ThreadId};
 pub use thread_flags as flags;
 
 #[doc(hidden)]
@@ -54,7 +54,7 @@ pub use arch::schedule;
 
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
-use riot_rs_runqueue::RunQueue;
+use riot_rs_runqueue::{GlobalRunqueue, RunQueue};
 use thread::{Thread, ThreadState};
 
 /// The number of possible priority levels.
@@ -229,12 +229,10 @@ impl Threads {
         if thread.state != ThreadState::Running {
             return false;
         }
-        if self.runqueue.peek_head(old_prio) == Some(thread_id) {
-            self.runqueue.pop_head(thread_id, old_prio);
-        } else {
-            self.runqueue.del(thread_id);
-        }
+
+        self.runqueue.del(thread_id, old_prio);
         self.runqueue.add(thread_id, prio);
+
         true
     }
 }
@@ -366,10 +364,10 @@ fn cleanup() -> ! {
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
     THREADS.with_mut(|mut threads| {
-        let Some(prio) = threads.current().map(|t| t.prio) else {
+        let Some((pid, prio)) = threads.current().map(|t| (t.pid, t.prio)) else {
             return;
         };
-        threads.runqueue.advance(prio);
+        threads.runqueue.advance(pid, prio);
         schedule();
     })
 }
