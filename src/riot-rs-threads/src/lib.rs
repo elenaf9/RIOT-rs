@@ -7,8 +7,8 @@
 // invariants
 #![allow(clippy::indexing_slicing)]
 
+pub use riot_rs_runqueue::{CoreId, RunqueueId, ThreadId};
 use riot_rs_runqueue::{GlobalRunqueue, RunQueue};
-pub use riot_rs_runqueue::{RunqueueId, ThreadId};
 
 mod arch;
 mod ensure_once;
@@ -47,7 +47,7 @@ pub static THREAD_FNS: [ThreadFn] = [..];
 /// Struct holding all scheduler state
 pub struct Threads {
     /// Global thread runqueue.
-    runqueue: RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>,
+    runqueue: RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF, CORES_NUMOF>,
     /// The actual TCBs.
     threads: [Thread; THREADS_NUMOF],
     /// `Some` when a thread is blocking another thread due to conflicting
@@ -76,11 +76,16 @@ impl Threads {
     ///
     /// Returns `None` if there is no current thread.
     pub(crate) fn current(&mut self) -> Option<&mut Thread> {
-        self.current_threads[cpuid()].map(|tid| &mut self.threads[tid as usize])
+        self.current_pid()
+            .map(|tid| &mut self.threads[tid as usize])
     }
 
     pub fn current_pid(&self) -> Option<ThreadId> {
-        self.current_threads[cpuid()]
+        self.current_threads[cpuid() as usize]
+    }
+
+    pub fn current_pid_mut(&mut self) -> &mut Option<ThreadId> {
+        &mut self.current_threads[cpuid() as usize]
     }
 
     /// Creates a new thread.
@@ -269,8 +274,8 @@ pub fn current_pid() -> Option<ThreadId> {
 }
 
 /// Returns the id of the CPU that this thread is running on.
-pub fn cpuid() -> usize {
-    smp::Chip::cpuid() as usize
+pub fn cpuid() -> CoreId {
+    smp::Chip::cpuid() as CoreId
 }
 
 /// Checks if a given [`ThreadId`] is valid
