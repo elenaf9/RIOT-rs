@@ -1,4 +1,7 @@
-use crate::arch::{Arch, Cpu};
+use crate::{
+    arch::{Arch, Cpu},
+    CoreId,
+};
 
 use super::Multicore;
 use embassy_rp::{
@@ -12,8 +15,8 @@ pub struct Chip;
 impl Multicore for Chip {
     const CORES: u32 = 2;
 
-    fn cpuid() -> u32 {
-        SIO.cpuid().read()
+    fn cpuid() -> CoreId {
+        SIO.cpuid().read() as CoreId
     }
 
     fn startup_cores() {
