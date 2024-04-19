@@ -1,5 +1,5 @@
 use super::Arch;
-use crate::Thread;
+use crate::{CoreId, Thread};
 use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::SCB;
@@ -165,10 +165,11 @@ unsafe extern "C" fn PendSV() {
 // TODO: make arch independent, or move to arch
 #[no_mangle]
 unsafe fn sched() -> u128 {
+    let core = CoreId::new(0);
     loop {
         if let Some(res) = critical_section::with(|cs| {
             let threads = unsafe { &mut *THREADS.as_ptr(cs) };
-            let next_pid = match threads.runqueue.get_next() {
+            let next_pid = match threads.runqueue.get_next(core) {
                 Some(pid) => pid,
                 None => {
                     cortex_m::asm::wfi();
