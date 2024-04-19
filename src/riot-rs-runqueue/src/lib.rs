@@ -1,8 +1,9 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(lint_reasons)]
+#![feature(min_specialization)]
 
 mod runqueue;
-pub use runqueue::{CoreId, RunQueue, RunqueueId, ThreadId};
+pub use runqueue::{CoreId, GlobalRunqueue, RunQueue, RunqueueId, ThreadId};
 
 #[cfg(test)]
 mod tests {
@@ -16,24 +17,24 @@ mod tests {
         runqueue.add(ThreadId::new(1), RunqueueId::new(0));
         runqueue.add(ThreadId::new(2), RunqueueId::new(0));
 
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
 
-        runqueue.advance(RunqueueId::new(0));
+        runqueue.advance(ThreadId::new(0), RunqueueId::new(0));
 
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(1)));
-        runqueue.advance(RunqueueId::new(0));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(1)));
+        runqueue.advance(ThreadId::new(1), RunqueueId::new(0));
 
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(2)));
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(2)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(2)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(2)));
 
-        runqueue.advance(RunqueueId::new(0));
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
+        runqueue.advance(ThreadId::new(2), RunqueueId::new(0));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
 
-        runqueue.advance(RunqueueId::new(0));
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(1)));
+        runqueue.advance(ThreadId::new(0), RunqueueId::new(0));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(1)));
 
-        runqueue.advance(RunqueueId::new(0));
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(2)));
+        runqueue.advance(ThreadId::new(1), RunqueueId::new(0));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(2)));
     }
 
     #[test]
@@ -45,13 +46,13 @@ mod tests {
         }
 
         for i in 0..=31 {
-            assert_eq!(runqueue.get_next(), Some(ThreadId::new(i)));
-            runqueue.advance(RunqueueId::new(0));
+            assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(i)));
+            runqueue.advance(ThreadId::new(i), RunqueueId::new(0));
         }
 
         for i in 0..=31 {
-            assert_eq!(runqueue.get_next(), Some(ThreadId::new(i)));
-            runqueue.advance(RunqueueId::new(0));
+            assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(i)));
+            runqueue.advance(ThreadId::new(i), RunqueueId::new(0));
         }
     }
 
@@ -66,17 +67,17 @@ mod tests {
         runqueue.add(ThreadId::new(2), RunqueueId::new(1));
         runqueue.add(ThreadId::new(4), RunqueueId::new(1));
 
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(2)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(2)));
         runqueue.del(ThreadId::new(2), RunqueueId::new(1));
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(4)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(4)));
         runqueue.del(ThreadId::new(4), RunqueueId::new(1));
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
         runqueue.del(ThreadId::new(0), RunqueueId::new(0));
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(1)));
         runqueue.del(ThreadId::new(1), RunqueueId::new(0));
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(3)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(3)));
         runqueue.del(ThreadId::new(3), RunqueueId::new(0));
-        assert_eq!(runqueue.get_next(), None);
+        assert_eq!(runqueue.get_next(CoreId::new(0)), None);
     }
     #[test]
     fn test_push_twice() {
@@ -85,16 +86,16 @@ mod tests {
         runqueue.add(ThreadId::new(0), RunqueueId::new(0));
         runqueue.add(ThreadId::new(1), RunqueueId::new(0));
 
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
         runqueue.del(ThreadId::new(0), RunqueueId::new(0));
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(1)));
 
         runqueue.add(ThreadId::new(0), RunqueueId::new(0));
 
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(1)));
 
-        runqueue.advance(RunqueueId::new(0));
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
+        runqueue.advance(ThreadId::new(1), RunqueueId::new(0));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
     }
 
     #[test]
@@ -112,37 +113,19 @@ mod tests {
             Some(CoreId::new(1))
         );
 
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(0))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert!(runqueue.get_next_for_core(CoreId::new(2)).is_none());
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert!(runqueue.get_next(CoreId::new(2)).is_none());
 
         // Advancing a runqueue shouldn't change any allocations
         // if all threads in the queue are already running.
-        assert_eq!(
-            runqueue.advance_from(ThreadId::new(0), RunqueueId::new(0)),
-            None
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(0))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert!(runqueue.get_next_for_core(CoreId::new(2)).is_none());
+        assert_eq!(runqueue.advance(ThreadId::new(0), RunqueueId::new(0)), None);
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert!(runqueue.get_next(CoreId::new(2)).is_none());
 
         // Restores original order.
-        assert_eq!(
-            runqueue.advance_from(ThreadId::new(1), RunqueueId::new(0)),
-            None
-        );
+        assert_eq!(runqueue.advance(ThreadId::new(1), RunqueueId::new(0)), None);
 
         // Add more threads, which should be allocated to free
         // cores.
@@ -155,46 +138,22 @@ mod tests {
             Some(CoreId::new(3))
         );
         assert_eq!(runqueue.add(ThreadId::new(4), RunqueueId::new(0)), None);
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(0))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(2)),
-            Some(ThreadId::new(2))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(3)),
-            Some(ThreadId::new(3))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(2)), Some(ThreadId::new(2)));
+        assert_eq!(runqueue.get_next(CoreId::new(3)), Some(ThreadId::new(3)));
 
         // Advancing the runqueue now should change the mapping
         // on core 0, since the previous head was running there.
         assert_eq!(
-            runqueue.advance_from(ThreadId::new(0), RunqueueId::new(0)),
+            runqueue.advance(ThreadId::new(0), RunqueueId::new(0)),
             Some(CoreId::new(0))
         );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(4))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(4)));
         // Other allocations shouldn't change.
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(2)),
-            Some(ThreadId::new(2))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(3)),
-            Some(ThreadId::new(3))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(2)), Some(ThreadId::new(2)));
+        assert_eq!(runqueue.get_next(CoreId::new(3)), Some(ThreadId::new(3)));
 
         // Adding or deleting waiting threads shouldn't change
         // any allocations.
@@ -207,23 +166,11 @@ mod tests {
             runqueue.del(ThreadId::new(2), RunqueueId::new(0)),
             Some(CoreId::new(2))
         );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(2)),
-            Some(ThreadId::new(5))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(2)), Some(ThreadId::new(5)));
         // Other allocations shouldn't change.
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(4))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(3)),
-            Some(ThreadId::new(3))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(4)));
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(3)), Some(ThreadId::new(3)));
     }
 
     #[test]
@@ -248,45 +195,18 @@ mod tests {
         );
         assert_eq!(runqueue.add(ThreadId::new(4), RunqueueId::new(0)), None);
 
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(0))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(2)),
-            Some(ThreadId::new(2))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(3)),
-            Some(ThreadId::new(3))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(2)), Some(ThreadId::new(2)));
+        assert_eq!(runqueue.get_next(CoreId::new(3)), Some(ThreadId::new(3)));
 
         // Advancing highest priority queue shouldn't change anything
         // because there are more cores than threads in this priority's queue.
-        assert_eq!(
-            runqueue.advance_from(ThreadId::new(0), RunqueueId::new(2)),
-            None
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(0))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(2)),
-            Some(ThreadId::new(2))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(3)),
-            Some(ThreadId::new(3))
-        );
+        assert_eq!(runqueue.advance(ThreadId::new(0), RunqueueId::new(2)), None);
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(2)), Some(ThreadId::new(2)));
+        assert_eq!(runqueue.get_next(CoreId::new(3)), Some(ThreadId::new(3)));
 
         // Advancing lowest priority queue should change allocations
         // since there are two threads in this priority's queue,
@@ -294,29 +214,17 @@ mod tests {
 
         // Core 3 was newly allocated.
         assert_eq!(
-            runqueue.advance_from(ThreadId::new(3), RunqueueId::new(0)),
+            runqueue.advance(ThreadId::new(3), RunqueueId::new(0)),
             Some(CoreId::new(3))
         );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(3)),
-            Some(ThreadId::new(4))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(3)), Some(ThreadId::new(4)));
         // Other allocations didn't change.
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(0))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(2)),
-            Some(ThreadId::new(2))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(2)), Some(ThreadId::new(2)));
 
         // Restores original order.
-        runqueue.advance_from(ThreadId::new(4), RunqueueId::new(0));
+        runqueue.advance(ThreadId::new(4), RunqueueId::new(0));
 
         // Delete one high-priority thread.
         // The waiting low-priority thread should be allocated
@@ -327,23 +235,11 @@ mod tests {
             runqueue.del(ThreadId::new(0), RunqueueId::new(2)),
             Some(CoreId::new(0))
         );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(4))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(4)));
         // Other allocations didn't change.
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(2)),
-            Some(ThreadId::new(2))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(3)),
-            Some(ThreadId::new(3))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(2)), Some(ThreadId::new(2)));
+        assert_eq!(runqueue.get_next(CoreId::new(3)), Some(ThreadId::new(3)));
 
         // Add one medium-priority thread.
         // The low-priority thread furthest back in its priority queue
@@ -354,23 +250,11 @@ mod tests {
             runqueue.add(ThreadId::new(5), RunqueueId::new(1)),
             Some(CoreId::new(0))
         );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(5))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(5)));
         // Other allocations didn't change.
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(2)),
-            Some(ThreadId::new(2))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(3)),
-            Some(ThreadId::new(3))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(2)), Some(ThreadId::new(2)));
+        assert_eq!(runqueue.get_next(CoreId::new(3)), Some(ThreadId::new(3)));
     }
 
     #[test]
@@ -381,13 +265,10 @@ mod tests {
             Some(CoreId::new(0))
         );
         assert_eq!(runqueue.add(ThreadId::new(1), RunqueueId::new(2)), None);
-        assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(0))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
         // Querying for n > `N_CORES` shouldn't cause a panic.
-        assert_eq!(runqueue.get_next_for_core(CoreId::new(1)), None)
+        assert_eq!(runqueue.get_next(CoreId::new(1)), None)
     }
 
     #[test]
@@ -414,48 +295,24 @@ mod tests {
 
         // Advance head.
         assert_eq!(
-            runqueue.advance_from(ThreadId::new(0), RunqueueId::new(0)),
+            runqueue.advance(ThreadId::new(0), RunqueueId::new(0)),
             Some(CoreId::new(0))
         );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(4))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(4)));
         // Other allocations didn't change.
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(2)),
-            Some(ThreadId::new(2))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(3)),
-            Some(ThreadId::new(3))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(2)), Some(ThreadId::new(2)));
+        assert_eq!(runqueue.get_next(CoreId::new(3)), Some(ThreadId::new(3)));
 
         // Advance from a thread that is not head.
         assert_eq!(
-            runqueue.advance_from(ThreadId::new(2), RunqueueId::new(0)),
+            runqueue.advance(ThreadId::new(2), RunqueueId::new(0)),
             Some(CoreId::new(2))
         );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(2)),
-            Some(ThreadId::new(5))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(2)), Some(ThreadId::new(5)));
         // Other allocations didn't change.
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(0)),
-            Some(ThreadId::new(4))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(1)),
-            Some(ThreadId::new(1))
-        );
-        assert_eq!(
-            runqueue.get_next_for_core(CoreId::new(3)),
-            Some(ThreadId::new(3))
-        );
+        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(4)));
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
+        assert_eq!(runqueue.get_next(CoreId::new(3)), Some(ThreadId::new(3)));
     }
 }
