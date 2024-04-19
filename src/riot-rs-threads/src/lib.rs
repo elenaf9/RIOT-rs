@@ -23,7 +23,7 @@ pub mod macro_reexports {
     pub use static_cell;
 }
 
-pub use riot_rs_runqueue::{RunqueueId, ThreadId};
+pub use riot_rs_runqueue::{CoreId, RunqueueId, ThreadId};
 pub use thread_flags as flags;
 
 #[doc(hidden)]
@@ -31,7 +31,7 @@ pub use arch::schedule;
 
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
-use riot_rs_runqueue::RunQueue;
+use riot_rs_runqueue::{GlobalRunqueue, RunQueue};
 use thread::{Thread, ThreadState};
 
 /// a global defining the number of possible priority levels
@@ -290,8 +290,10 @@ fn cleanup() -> ! {
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
     THREADS.with_mut(|mut threads| {
-        let runqueue = threads.current().unwrap().prio;
-        threads.runqueue.advance(runqueue);
+        let thread = threads.current().unwrap();
+        let runqueue = thread.prio;
+        let pid = thread.pid;
+        threads.runqueue.advance(pid, runqueue);
         schedule();
     })
 }
