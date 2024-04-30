@@ -154,17 +154,21 @@ impl Threads {
     /// # Panics
     ///
     /// Panics if `pid` is >= [`THREADS_NUMOF`].
-    pub(crate) fn set_state(&mut self, pid: ThreadId, state: ThreadState) -> ThreadState {
+    pub(crate) fn set_state(
+        &mut self,
+        pid: ThreadId,
+        state: ThreadState,
+    ) -> (ThreadState, Option<CoreId>) {
         let thread = &mut self.threads[pid as usize];
         let old_state = thread.state;
         thread.state = state;
-        if old_state != ThreadState::Running && state == ThreadState::Running {
-            self.runqueue.add(thread.pid, thread.prio);
-        } else if old_state == ThreadState::Running && state != ThreadState::Running {
-            self.runqueue.del(thread.pid, thread.prio);
-        }
-
-        old_state
+        let core = match (old_state, state) {
+            (old, new) if old == new => None,
+            (_, ThreadState::Running) => self.runqueue.add(thread.pid, thread.prio),
+            (ThreadState::Running, _) => self.runqueue.del(thread.pid, thread.prio),
+            _ => None,
+        };
+        (old_state, core)
     }
 
     /// Returns the state of a thread.
@@ -291,10 +295,10 @@ pub fn is_valid_pid(thread_id: ThreadId) -> bool {
 fn cleanup() -> ! {
     THREADS.with_mut(|mut threads| {
         let thread_id = threads.current_pid().unwrap();
-        threads.set_state(thread_id, ThreadState::Invalid);
+        if let Some(_core_id) = threads.set_state(thread_id, ThreadState::Invalid).1 {
+            schedule();
+        }
     });
-
-    schedule();
 
     unreachable!();
 }
@@ -305,8 +309,9 @@ pub fn yield_same() {
         let thread = threads.current().unwrap();
         let runqueue = thread.prio;
         let pid = thread.pid;
-        threads.runqueue.advance(pid, runqueue);
-        schedule();
+        if let Some(_core_id) = threads.runqueue.advance(pid, runqueue) {
+            schedule();
+        }
     })
 }
 
@@ -314,8 +319,9 @@ pub fn yield_same() {
 pub fn sleep() {
     THREADS.with_mut(|mut threads| {
         let pid = threads.current_pid().unwrap();
-        threads.set_state(pid, ThreadState::Paused);
-        schedule();
+        if let Some(_core_id) = threads.set_state(pid, ThreadState::Paused).1 {
+            schedule();
+        }
     });
 }
 
@@ -326,8 +332,9 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
     THREADS.with_mut(|mut threads| {
         if let Some(state) = threads.get_state(thread_id) {
             if state == ThreadState::Paused {
-                threads.set_state(thread_id, ThreadState::Running);
-                schedule();
+                if let Some(_core_id) = threads.set_state(thread_id, ThreadState::Running).1 {
+                    schedule();
+                }
                 true
             } else {
                 false
