@@ -72,6 +72,7 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
     }
 
     /// Adds thread with pid `n` to runqueue number `rq`.
+    #[inline]
     pub fn add(&mut self, n: ThreadId, rq: RunqueueId) {
         debug_assert!(usize::from(n) < N_THREADS);
         debug_assert!(usize::from(rq) < N_QUEUES);
@@ -137,6 +138,12 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         debug_assert!((usize::from(rq)) < N_QUEUES);
         self.queues.advance(rq.0)
     }
+
+    /// Checks if a runqueue is empty.
+    pub fn is_empty(&mut self, rq: RunqueueId) -> bool {
+        debug_assert!((rq.0 as usize) < N_QUEUES);
+        self.queues.is_empty(rq.0)
+    }
 }
 
 mod clist {
@@ -175,6 +182,7 @@ mod clist {
             self.tail[rq as usize] == Self::sentinel()
         }
 
+        #[inline]
         pub fn push(&mut self, n: u8, rq: u8) {
             assert!(n < Self::sentinel());
             if self.next_idxs[n as usize] != Self::sentinel() {
@@ -196,6 +204,7 @@ mod clist {
             }
         }
 
+        #[inline]
         pub fn pop_head(&mut self, rq: u8) -> Option<u8> {
             let head = self.peek_head(rq)?;
 

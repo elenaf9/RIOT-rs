@@ -92,6 +92,10 @@ impl Threads {
         self.current_threads[core_id()]
     }
 
+    fn current_pid_mut(&mut self) -> &mut Option<ThreadId> {
+        &mut self.current_threads[core_id()]
+    }
+
     /// Creates a new thread.
     ///
     /// This sets up the stack and TCB for this thread.
@@ -152,21 +156,11 @@ impl Threads {
 
     /// Sets the state of a thread.
     ///
-    /// This function handles adding/ removing the thread to the Runqueue depending
-    /// on its previous or new state.
-    ///
     /// # Panics
     ///
     /// Panics if `pid` is >= [`THREADS_NUMOF`].
     fn set_state(&mut self, pid: ThreadId, state: ThreadState) -> ThreadState {
-        let thread = &mut self.threads[usize::from(pid)];
-        let old_state = thread.state;
-        thread.state = state;
-        if old_state != ThreadState::Running && state == ThreadState::Running {
-            self.runqueue.add(thread.pid, thread.prio);
-        }
-
-        old_state
+        core::mem::replace(&mut self.threads[usize::from(pid)].state, state)
     }
 
     /// Returns the state of a thread.
@@ -262,11 +256,13 @@ pub unsafe fn thread_create_raw(
     prio: u8,
 ) -> ThreadId {
     THREADS.with_mut(|mut threads| {
+        let prio = RunqueueId::new(prio);
         let thread_id = threads
-            .create(func, arg, stack, RunqueueId::new(prio))
+            .create(func, arg, stack, prio)
             .expect("Max `THREADS_NUMOF` concurrent threads should be created.")
             .pid;
         threads.set_state(thread_id, ThreadState::Running);
+        threads.runqueue.add(thread_id, prio);
         thread_id
     })
 }
@@ -315,8 +311,10 @@ pub fn yield_same() {
         let Some((pid, prio)) = threads.current().map(|t| (t.pid, t.prio)) else {
             return;
         };
-        threads.runqueue.add(pid, prio);
-        schedule();
+        if !threads.runqueue.is_empty(prio) {
+            threads.runqueue.add(pid, prio);
+            schedule();
+        }
     })
 }
 
@@ -336,17 +334,18 @@ pub fn sleep() {
 /// Returns `false` if no paused thread exists for `thread_id`.
 pub fn wakeup(thread_id: ThreadId) -> bool {
     THREADS.with_mut(|mut threads| {
-        if let Some(state) = threads.get_state(thread_id) {
-            if state == ThreadState::Paused {
-                threads.set_state(thread_id, ThreadState::Running);
-                schedule();
-                true
-            } else {
-                false
-            }
-        } else {
-            false
+        if usize::from(thread_id) >= THREADS_NUMOF {
+            return false;
         }
+        let thread = &threads.threads[usize::from(thread_id)];
+        if thread.state != ThreadState::Paused {
+            return false;
+        }
+        let prio = thread.prio;
+        threads.set_state(thread_id, ThreadState::Running);
+        threads.runqueue.add(thread_id, prio);
+        schedule();
+        true
     })
 }
 
