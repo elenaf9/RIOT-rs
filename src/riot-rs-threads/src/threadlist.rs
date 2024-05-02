@@ -37,6 +37,8 @@ impl ThreadList {
             let old_state = THREADS.with_mut_cs(cs, |mut threads| {
                 self.head = threads.thread_blocklist[usize::from(head)].take();
                 let old_state = threads.set_state(head, ThreadState::Running);
+                let prio = threads.threads[usize::from(head)].prio;
+                threads.runqueue.add(head, prio);
                 crate::schedule();
                 old_state
             });

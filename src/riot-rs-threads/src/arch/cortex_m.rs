@@ -1,5 +1,4 @@
 use super::Arch;
-use crate::smp::Multicore;
 use crate::Thread;
 use core::arch::asm;
 use core::ptr::write_volatile;
@@ -166,7 +165,6 @@ unsafe extern "C" fn PendSV() {
 // TODO: make arch independent, or move to arch
 #[no_mangle]
 unsafe fn sched() -> u128 {
-    let core_id = crate::smp::Chip::core_id() as usize;
     loop {
         if let Some(res) = critical_section::with(|cs| {
             let threads = unsafe { &mut *THREADS.as_ptr(cs) };
@@ -193,11 +191,11 @@ unsafe fn sched() -> u128 {
 
                 threads.threads[usize::from(current_pid)].sp =
                     cortex_m::register::psp::read() as usize;
-                threads.current_threads[core_id] = Some(next_pid);
+                *threads.current_pid_mut() = Some(next_pid);
 
                 current_high_regs = threads.threads[usize::from(current_pid)].data.as_ptr();
             } else {
-                threads.current_threads[core_id] = Some(next_pid);
+                *threads.current_pid_mut() = Some(next_pid);
                 current_high_regs = core::ptr::null();
             };
 
