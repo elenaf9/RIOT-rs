@@ -1075,10 +1075,12 @@ source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-240605#584
 dependencies = [
  "cortex-m",
  "critical-section",
+ "defmt",
  "document-features",
  "embassy-executor-macros",
  "embassy-time-driver",
  "embassy-time-queue-driver",
+ "log 0.4.21",
 ]
 
 [[package]]
@@ -3475,6 +3477,7 @@ dependencies = [
  "cfg-if",
  "cortex-m",
  "defmt",
+ "embassy-rp",
 ]
 
 [[package]]
@@ -3588,6 +3591,7 @@ dependencies = [
  "cfg-if",
  "cortex-m",
  "cortex-m-rt",
+ "embassy-rp",
  "esp-hal",
  "linkme",
  "portable-atomic",
@@ -3615,11 +3619,13 @@ dependencies = [
  "cortex-m-semihosting",
  "critical-section",
  "defmt",
+ "embassy-rp",
  "esp-hal",
  "linkme",
  "panic-semihosting",
  "paste",
  "riot-rs-runqueue",
+ "rp-pac",
  "static_cell",
 ]
 

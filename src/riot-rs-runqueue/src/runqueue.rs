@@ -111,11 +111,31 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         if rq_ffs == 0 {
             return None;
         }
-        let rq = RunqueueId::new(rq_ffs as u8 - 1);
-        match self.queues.peek_head(rq.0) {
+        let rq = rq_ffs as u8 - 1;
+        match self.queues.peek_head(rq) {
             Some(id) => Some(ThreadId::new(id)),
             None => None,
         }
+    }
+
+    /// Pop the thread that should run next.
+    ///
+    /// Pops the next runnable thread of
+    /// the runqueue with the highest index.
+    pub fn pop_next(&mut self) -> Option<ThreadId> {
+        let rq_ffs = Self::ffs(self.bitcache);
+        if rq_ffs == 0 {
+            return None;
+        }
+        let rq = (rq_ffs - 1) as u8;
+        let head = match self.queues.pop_head(rq) {
+            Some(id) => Some(ThreadId::new(id)),
+            None => None,
+        };
+        if self.queues.is_empty(rq) {
+            self.bitcache &= !(1 << rq);
+        }
+        head
     }
 
     /// Advances runqueue number `rq`.
