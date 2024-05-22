@@ -5,9 +5,11 @@
 
 use riot_rs::{debug::println, thread};
 
+const ITERATIONS: usize = 10000;
+
 #[riot_rs::thread(autostart)]
 fn thread0() {
-    match riot_rs::bench::benchmark(10000, || thread::yield_same()) {
+    match riot_rs::bench::benchmark(ITERATIONS, || thread::yield_same()) {
         Ok(ticks) => {
             println!(
                 "took {} ticks per iteration ({} per context switch)",
@@ -23,7 +25,7 @@ fn thread0() {
 
 #[riot_rs::thread(autostart)]
 fn thread1() {
-    loop {
+    for _ in 0..ITERATIONS + 10 {
         thread::yield_same()
     }
 }

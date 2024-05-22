@@ -3332,6 +3332,7 @@ version = "0.1.0"
 dependencies = [
  "cfg-if",
  "cortex-m",
+ "embassy-rp",
 ]
 
 [[package]]
@@ -3438,6 +3439,7 @@ dependencies = [
  "cfg-if",
  "cortex-m",
  "cortex-m-rt",
+ "embassy-rp",
  "esp-hal",
  "linkme",
  "portable-atomic",
@@ -3461,11 +3463,13 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-semihosting",
  "critical-section",
+ "embassy-rp",
  "esp-hal",
  "linkme",
  "panic-semihosting",
  "paste",
  "riot-rs-runqueue",
+ "rp-pac",
  "static_cell",
 ]
 

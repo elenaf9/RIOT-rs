@@ -1,6 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(naked_functions)]
 #![feature(used_with_arg)]
+#![feature(type_alias_impl_trait)]
 // Disable indexing lints for now, possible panics are documented or rely on internally-enforced
 // invariants
 #![allow(clippy::indexing_slicing)]
@@ -8,6 +9,7 @@
 mod arch;
 mod autostart_thread;
 mod ensure_once;
+mod smp;
 mod thread;
 mod threadlist;
 
@@ -32,6 +34,7 @@ pub use arch::schedule;
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::RunQueue;
+use smp::Multicore;
 use thread::{Thread, ThreadState};
 
 /// a global defining the number of possible priority levels
@@ -39,6 +42,8 @@ pub const SCHED_PRIO_LEVELS: usize = 12;
 
 /// a global defining the number of threads that can be created
 pub const THREADS_NUMOF: usize = 16;
+
+pub const CORES_NUMOF: usize = smp::Chip::CORES as usize;
 
 static THREADS: EnsureOnce<Threads> = EnsureOnce::new(Threads::new());
 
@@ -57,7 +62,7 @@ struct Threads {
     /// resource access.
     thread_blocklist: [Option<ThreadId>; THREADS_NUMOF],
     /// The currently running thread.
-    current_thread: Option<ThreadId>,
+    current_threads: [Option<ThreadId>; CORES_NUMOF],
 }
 
 impl Threads {
@@ -66,7 +71,7 @@ impl Threads {
             runqueue: RunQueue::new(),
             threads: [const { Thread::default() }; THREADS_NUMOF],
             thread_blocklist: [const { None }; THREADS_NUMOF],
-            current_thread: None,
+            current_threads: [None; CORES_NUMOF],
         }
     }
 
@@ -79,12 +84,11 @@ impl Threads {
     ///
     /// Returns `None` if there is no current thread.
     fn current(&mut self) -> Option<&mut Thread> {
-        self.current_thread
-            .map(|tid| &mut self.threads[usize::from(tid)])
+        self.current_threads[core_id()].map(|tid| &mut self.threads[usize::from(tid)])
     }
 
     fn current_pid(&self) -> Option<ThreadId> {
-        self.current_thread
+        self.current_threads[core_id()]
     }
 
     /// Creates a new thread.
@@ -159,8 +163,6 @@ impl Threads {
         thread.state = state;
         if old_state != ThreadState::Running && state == ThreadState::Running {
             self.runqueue.add(thread.pid, thread.prio);
-        } else if old_state == ThreadState::Running && state != ThreadState::Running {
-            self.runqueue.del(thread.pid, thread.prio);
         }
 
         old_state
@@ -188,6 +190,7 @@ impl Threads {
 /// Currently it expects at least:
 /// - Cortex-M: to be called from the reset handler while MSP is active
 pub unsafe fn start_threading() {
+    smp::Chip::startup_cores();
     Cpu::start_threading();
 }
 
@@ -266,6 +269,11 @@ pub fn current_pid() -> Option<ThreadId> {
     THREADS.with(|threads| threads.current_pid())
 }
 
+/// Returns the id of the CPU that this thread is running on.
+pub fn core_id() -> usize {
+    smp::Chip::core_id() as usize
+}
+
 /// Checks if a given [`ThreadId`] is valid
 pub fn is_valid_pid(thread_id: ThreadId) -> bool {
     THREADS.with(|threads| threads.is_valid_pid(thread_id))
@@ -290,8 +298,10 @@ fn cleanup() -> ! {
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
     THREADS.with_mut(|mut threads| {
-        let runqueue = threads.current().unwrap().prio;
-        threads.runqueue.advance(runqueue);
+        let thread = threads.current().unwrap();
+        let runqueue = thread.prio;
+        let pid = thread.pid;
+        threads.runqueue.add(pid, runqueue);
         schedule();
     })
 }
