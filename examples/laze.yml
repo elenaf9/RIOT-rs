@@ -16,4 +16,5 @@ subdirs:
   - minimal
   - random
   - threading
+  - threading-net-tcp
   - threading-channel

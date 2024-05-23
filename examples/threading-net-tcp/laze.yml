@@ -1,0 +1,8 @@
+apps:
+  - name: threading-net-tcp
+    context:
+      - esp32c3
+      - esp32c6
+    selects:
+      - ?release
+      - network

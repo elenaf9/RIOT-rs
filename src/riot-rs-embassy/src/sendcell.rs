@@ -40,12 +40,13 @@ impl<T> SendCell<T> {
     }
 
     /// Gets the contents of this [`SendCell`].
-    pub fn get(&self, spawner: Spawner) -> Option<&T> {
-        if spawner.executor_id() == self.executor_id {
-            Some(&self.inner)
-        } else {
-            None
-        }
+    pub fn get(&self, _spawner: Spawner) -> Option<&T> {
+        Some(&self.inner)
+        // if spawner.executor_id() == self.executor_id {
+        //     Some(&self.inner)
+        // } else {
+        //     None
+        // }
     }
 
     /// Creates a new [`SendCell`] (async version).

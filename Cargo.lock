@@ -68,7 +68,7 @@ dependencies = [
 name = "ai-c3"
 version = "0.1.0"
 dependencies = [
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -926,7 +926,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -1624,6 +1624,7 @@ dependencies = [
  "num-traits",
  "portable-atomic",
  "portable_atomic_enum",
+ "riot-rs-debug 0.1.0 (git+https://github.com/kaspar030/esp-wifi?branch=for-riot-rs-240517)",
  "toml-cfg",
 ]
 
@@ -1668,7 +1669,7 @@ dependencies = [
 name = "expressif-esp32-c6-devkitc-1"
 version = "0.1.0"
 dependencies = [
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -2378,7 +2379,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "nrf51",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -2389,7 +2390,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -2479,7 +2480,7 @@ name = "nrf51"
 version = "0.1.0"
 dependencies = [
  "nrf51-pac",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -2501,7 +2502,7 @@ dependencies = [
  "ld-memory",
  "nrf52832-pac",
  "nrf52840-pac",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -2578,7 +2579,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -2600,7 +2601,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -2611,7 +2612,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -2620,7 +2621,7 @@ name = "nrf5340"
 version = "0.1.0"
 dependencies = [
  "ld-memory",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
 ]
 
 [[package]]
@@ -2652,7 +2653,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "nrf5340",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
 ]
 
 [[package]]
@@ -2796,7 +2797,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
 ]
 
@@ -3147,7 +3148,7 @@ dependencies = [
  "linkme",
  "riot-rs-bench",
  "riot-rs-boards",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-embassy",
  "riot-rs-macros",
  "riot-rs-random",
@@ -3205,6 +3206,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "riot-rs-debug"
+version = "0.1.0"
+source = "git+https://github.com/kaspar030/esp-wifi?branch=for-riot-rs-240517#27bceae1171c238c41914b4aeeed37736343cc6a"
+dependencies = [
+ "cortex-m",
+ "esp-println",
+ "log",
+]
+
+[[package]]
 name = "riot-rs-embassy"
 version = "0.1.0"
 dependencies = [
@@ -3219,13 +3230,14 @@ dependencies = [
  "embassy-rp",
  "embassy-sync 0.5.0",
  "embassy-time",
+ "embassy-time-driver",
  "embassy-usb",
  "esp-hal",
  "esp-wifi",
  "heapless 0.8.0",
  "linkme",
  "once_cell",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-random",
  "riot-rs-rt",
  "riot-rs-threads",
@@ -3269,7 +3281,7 @@ dependencies = [
  "linkme",
  "portable-atomic",
  "riot-rs-boards",
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-threads",
  "riot-rs-utils",
  "rtt-target",
@@ -3337,7 +3349,7 @@ dependencies = [
 name = "rp2040"
 version = "0.1.0"
 dependencies = [
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-embassy",
  "riot-rs-rt",
 ]
@@ -3355,7 +3367,7 @@ dependencies = [
 name = "rpi-pico"
 version = "0.1.0"
 dependencies = [
- "riot-rs-debug",
+ "riot-rs-debug 0.1.0",
  "riot-rs-rt",
  "rp2040",
 ]
@@ -3826,6 +3838,21 @@ version = "0.1.0"
 dependencies = [
  "riot-rs",
  "riot-rs-boards",
+]
+
+[[package]]
+name = "threading-net-tcp"
+version = "0.1.0"
+dependencies = [
+ "embassy-executor",
+ "embassy-net",
+ "embassy-time",
+ "embedded-io-async",
+ "esp-hal",
+ "heapless 0.8.0",
+ "riot-rs",
+ "riot-rs-boards",
+ "static_cell",
 ]
 
 [[package]]
