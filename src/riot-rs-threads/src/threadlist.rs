@@ -36,8 +36,10 @@ impl ThreadList {
         if let Some(head) = self.head {
             let old_state = THREADS.with_mut_cs(cs, |mut threads| {
                 self.head = threads.thread_blocklist[usize::from(head)].take();
-                let old_state = threads.set_state(head, ThreadState::Running);
-                crate::schedule();
+                let (old_state, core_id) = threads.set_state(head, ThreadState::Running);
+                if let Some(_core_id) = core_id {
+                    crate::schedule();
+                }
                 old_state
             });
             Some((head, old_state))
