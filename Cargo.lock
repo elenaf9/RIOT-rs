@@ -3230,7 +3230,6 @@ dependencies = [
  "embassy-rp",
  "embassy-sync 0.5.0",
  "embassy-time",
- "embassy-time-driver",
  "embassy-usb",
  "esp-hal",
  "esp-wifi",

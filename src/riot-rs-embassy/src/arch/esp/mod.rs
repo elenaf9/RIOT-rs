@@ -1,11 +1,10 @@
 pub mod gpio;
 
-use esp_hal::{clock::ClockControl, embassy, prelude::*};
+use esp_hal::{clock::ClockControl, embassy, prelude::*, timer::TimerGroup};
 
 pub use esp_hal::{
     embassy::executor::Executor,
-    interrupt,
-    peripherals::{Interrupt, OptionalPeripherals, Peripherals, SYSTIMER},
+    peripherals::{OptionalPeripherals, Peripherals},
 };
 
 #[derive(Default)]
@@ -34,14 +33,12 @@ pub fn init(_config: Config) -> OptionalPeripherals {
             &clocks,
         )
         .unwrap();
-        // Mark alarm0 as allocated so that it won't be reused by the embassy executor.
-        unsafe { assert_eq!(embassy_time_driver::allocate_alarm().unwrap().id(), 0) };
 
         crate::wifi::esp_wifi::WIFI_INIT.set(init).unwrap();
     }
 
-    let timer = unsafe { esp_hal::systimer::SystemTimer::new_async(SYSTIMER::steal()) };
-    embassy::init(&clocks, timer);
+    let timer_group0 = TimerGroup::new_async(peripherals.TIMG0.take().unwrap(), &clocks);
+    embassy::init(&clocks, timer_group0);
 
     peripherals
 }
