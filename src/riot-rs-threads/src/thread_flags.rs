@@ -106,8 +106,9 @@ impl Threads {
             },
             _ => false,
         } {
-            self.set_state(thread_id, ThreadState::Running);
-            crate::schedule();
+            if let Some(_core_id) = self.set_state(thread_id, ThreadState::Running).1 {
+                crate::schedule();
+            }
         }
     }
 
