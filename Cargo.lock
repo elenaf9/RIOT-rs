@@ -3820,6 +3820,7 @@ version = "0.1.0"
 dependencies = [
  "riot-rs",
  "riot-rs-boards",
+ "riot-rs-threads",
 ]
 
 [[package]]

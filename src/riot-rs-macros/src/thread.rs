@@ -37,7 +37,9 @@ pub fn thread(args: TokenStream, item: TokenStream) -> TokenStream {
     #[allow(clippy::wildcard_imports)]
     use thread::*;
 
-    use quote::quote;
+    use quote::{format_ident, quote};
+
+    use crate::utils::find_crate;
 
     let mut attrs = Attributes::default();
     let thread_parser = syn::meta::parser(|meta| attrs.parse(&meta));
@@ -62,13 +64,24 @@ pub fn thread(args: TokenStream, item: TokenStream) -> TokenStream {
         priority,
     } = Parameters::from(attrs);
 
-    let riot_rs_crate = utils::riot_rs_crate();
+    let thread_crate = {
+        match (find_crate("riot-rs-threads"), find_crate("riot-rs")) {
+            (Some(riot_rs_threads), _) => syn::Path::from(riot_rs_threads),
+            (None, Some(riot_rs)) => {
+                let mut path = syn::Path::from(riot_rs);
+                path.segments.push(format_ident!("thread").into());
+                path
+            }
+
+            _ => panic!(r#"neither "riot-rs" nor "riot-rs-threads" found in dependencies!"#),
+        }
+    };
 
     let expanded = quote! {
         #no_mangle_attr
         #thread_function
 
-        #riot_rs_crate::thread::autostart_thread!(#fn_name, stacksize = #stack_size, priority = #priority);
+        #thread_crate::autostart_thread!(#fn_name, stacksize = #stack_size, priority = #priority);
     };
 
     TokenStream::from(expanded)
