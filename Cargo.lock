@@ -3235,6 +3235,7 @@ dependencies = [
  "linkme",
  "once_cell",
  "riot-rs-debug",
+ "riot-rs-macros",
  "riot-rs-random",
  "riot-rs-rt",
  "riot-rs-threads",
