@@ -116,7 +116,7 @@ fn init() -> ! {
 }
 
 #[cfg(feature = "executor-thread")]
-#[riot_rs_macros::thread(autostart, stacksize = 65536)]
+#[riot_rs_macros::thread(autostart, stacksize = 65536, priority = 8)]
 fn init() {
     println!("riot-rs-embassy::init(): using thread executor");
     let p = arch::init();
