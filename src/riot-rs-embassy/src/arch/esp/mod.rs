@@ -2,8 +2,10 @@ pub mod gpio;
 
 use esp_hal::{clock::ClockControl, system::SystemControl, timer::timg::TimerGroup};
 
-pub use esp_hal::peripherals::{OptionalPeripherals, Peripherals};
+#[cfg(feature = "executor-single-thread")]
 pub use esp_hal_embassy::Executor;
+
+pub use esp_hal::peripherals::{OptionalPeripherals, Peripherals};
 
 pub fn init() -> OptionalPeripherals {
     let mut peripherals = OptionalPeripherals::from(Peripherals::take());
