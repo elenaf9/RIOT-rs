@@ -53,14 +53,3 @@ async fn tcp_echo() {
         }
     }
 }
-
-/// Low priority thread that runs the application logic.
-#[riot_rs::thread(autostart, stacksize = 4096)]
-fn main() {
-    println!("main()");
-    extern "Rust" {
-        fn riot_rs_embassy_init() -> !;
-    }
-    // This autostarts the `tcp_echo` tasks above.
-    unsafe { riot_rs_embassy_init() };
-}

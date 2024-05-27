@@ -1,11 +1,9 @@
 pub mod gpio;
 
+#[cfg(feature = "executor-interrupt")]
+pub use esp_hal::embassy::executor::Executor;
+pub use esp_hal::peripherals::{OptionalPeripherals, Peripherals};
 use esp_hal::{clock::ClockControl, embassy, prelude::*, timer::TimerGroup};
-
-pub use esp_hal::{
-    embassy::executor::Executor,
-    peripherals::{OptionalPeripherals, Peripherals},
-};
 
 pub fn init() -> OptionalPeripherals {
     let mut peripherals = OptionalPeripherals::from(Peripherals::take());

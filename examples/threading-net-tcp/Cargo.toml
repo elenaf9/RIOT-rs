@@ -10,6 +10,6 @@ embassy-executor = { workspace = true }
 embassy-net = { workspace = true, features = ["tcp"] }
 embassy-time = { workspace = true }
 embedded-io-async = "0.6.1"
-riot-rs = { path = "../../src/riot-rs", features = ["threading"] }
+riot-rs = { path = "../../src/riot-rs", features = ["threading", "executor-thread"] }
 riot-rs-boards = { path = "../../src/riot-rs-boards" }
 
