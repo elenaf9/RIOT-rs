@@ -3847,11 +3847,8 @@ dependencies = [
  "embassy-net",
  "embassy-time",
  "embedded-io-async",
- "esp-hal",
- "heapless 0.8.0",
  "riot-rs",
  "riot-rs-boards",
- "static_cell",
 ]
 
 [[package]]

@@ -6,20 +6,10 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-
-embassy-executor = { workspace = true, default-features = false }
-embassy-time = { workspace = true, default-features = false }
+embassy-executor = { workspace = true }
+embassy-net = { workspace = true, features = ["tcp"] }
+embassy-time = { workspace = true }
+embedded-io-async = "0.6.1"
 riot-rs = { path = "../../src/riot-rs", features = ["threading"] }
 riot-rs-boards = { path = "../../src/riot-rs-boards" }
-static_cell = "2.1"
-embassy-net = { workspace = true, features = ["tcp"] }
-heapless = { workspace = true }
-embedded-io-async = "0.6.1"
-
-
-[target.'cfg(context = "esp32c3")'.dependencies]
-esp-hal = { workspace = true, features = ["esp32c3"] }
-
-[target.'cfg(context = "esp32c6")'.dependencies]
-esp-hal = { workspace = true, features = ["esp32c6"] }
 
