@@ -25,6 +25,7 @@ embassy-usb = { workspace = true, optional = true }
 
 riot-rs-threads = { path = "../riot-rs-threads", optional = true }
 riot-rs-debug = { workspace = true }
+riot-rs-macros = { path = "../riot-rs-macros" }
 riot-rs-rt = { path = "../riot-rs-rt" }
 riot-rs-random = { path = "../riot-rs-random", optional = true }
 riot-rs-utils = { workspace = true }
@@ -38,11 +39,12 @@ once_cell = { version = "1.19.0", default-features = false, features = [
 cyw43 = { version = "0.1.0", features = ["firmware-logs"], optional = true }
 cyw43-pio = { version = "0.1.0", features = ["overclock"], optional = true }
 
+# listed here for conditional feature selection
+embassy-nrf = { workspace = true, default-features = false, optional = true }
+esp-hal = { workspace = true, default-features = false, optional = true }
+
 [target.'cfg(context = "cortex-m")'.dependencies]
-embassy-executor = { workspace = true, features = [
-  "arch-cortex-m",
-  "executor-interrupt",
-] }
+embassy-executor = { workspace = true, default-features = false, features = [ "arch-cortex-m"] }
 
 [target.'cfg(context = "nrf")'.dependencies]
 embassy-nrf = { workspace = true, features = [
@@ -72,7 +74,6 @@ embassy-rp = { workspace = true, features = [
 [target.'cfg(context = "esp")'.dependencies]
 esp-hal = { workspace = true, features = [
   "embassy",
-  "embassy-executor-thread",
   "embassy-time-driver",
   "embassy-time-timg0",
 ] }
@@ -113,5 +114,10 @@ threading = ["dep:riot-rs-threads"]
 override-network-config = []
 override-usb-config = []
 
-executor-single-thread = []
-executor-interrupt = []
+executor-single-thread = [
+  "riot-rs-rt/executor-single-thread",
+  "esp-hal?/embassy-executor-thread",
+]
+
+executor-interrupt = ["embassy-executor/executor-interrupt", "esp-hal?/embassy-executor-interrupt"]
+executor-thread = ["threading"]

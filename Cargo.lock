@@ -1998,6 +1998,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hello-world-async"
+version = "0.1.0"
+dependencies = [
+ "embassy-executor",
+ "riot-rs",
+ "riot-rs-boards",
+]
+
+[[package]]
 name = "hermit-abi"
 version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3237,6 +3246,7 @@ dependencies = [
  "linkme",
  "once_cell",
  "riot-rs-debug 0.1.0",
+ "riot-rs-macros",
  "riot-rs-random",
  "riot-rs-rt",
  "riot-rs-threads",
@@ -3302,7 +3312,9 @@ dependencies = [
  "esp-hal",
  "linkme",
  "panic-semihosting",
+ "paste",
  "riot-rs-runqueue",
+ "static_cell",
 ]
 
 [[package]]
@@ -4028,7 +4040,7 @@ dependencies = [
 [[package]]
 name = "usbd-hid-descriptors"
 version = "0.1.2"
-source = "git+https://github.com/kaspar030/usbd-hid?branch=for-riot-rs#1dfc36bf4241e1088a29ebae308868d271ad70be"
+source = "git+https://github.com/twitchyliquid64/usbd-hid?rev=76bea16537e1a347df2ebced5b9e1d48f71c9859#76bea16537e1a347df2ebced5b9e1d48f71c9859"
 dependencies = [
  "bitfield 0.14.0",
 ]
@@ -4036,7 +4048,7 @@ dependencies = [
 [[package]]
 name = "usbd-hid-macros"
 version = "0.6.0"
-source = "git+https://github.com/kaspar030/usbd-hid?branch=for-riot-rs#1dfc36bf4241e1088a29ebae308868d271ad70be"
+source = "git+https://github.com/twitchyliquid64/usbd-hid?rev=76bea16537e1a347df2ebced5b9e1d48f71c9859#76bea16537e1a347df2ebced5b9e1d48f71c9859"
 dependencies = [
  "byteorder",
  "hashbrown 0.13.2",

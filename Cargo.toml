@@ -60,11 +60,12 @@ riot-rs-rt = { path = "src/riot-rs-rt" }
 riot-rs-runqueue = { path = "src/riot-rs-runqueue" }
 riot-rs-utils = { path = "src/riot-rs-utils", default-features = false }
 
-const_panic = { version = "0.2.8", default_features = false }
+const_panic = { version = "0.2.8", default-features = false }
 document-features = "0.2.8"
 heapless = { version = "0.8.0", default-features = false }
-konst = { version = "0.3.8", default_features = false }
+konst = { version = "0.3.8", default-features = false }
 ld-memory = { version = "0.2.9" }
+paste = { version = "1.0" }
 static_cell = { version = "2.0.0", features = ["nightly"] }
 
 [profile.dev]
@@ -91,7 +92,7 @@ embassy-hal-internal = { git = "https://github.com/kaspar030/embassy", branch = 
 embassy-nrf = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-300424" }
 embassy-net = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-300424" }
 
-usbd-hid-macros = { git = "https://github.com/kaspar030/usbd-hid", branch = "for-riot-rs" }
+usbd-hid-macros = { git = "https://github.com/twitchyliquid64/usbd-hid", rev = "76bea16537e1a347df2ebced5b9e1d48f71c9859" }
 
 # version 0.12-to-be
 smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "125773e282bc2e0c914a49e9c75573926e26e558" }
@@ -99,6 +100,9 @@ smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "125773e282
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
 unused_must_use = "deny"
+# ... until we figure out a way to generate a list of all used cfg variables
+# across build configurations ...
+unexpected_cfgs = "allow"
 
 [workspace.lints.clippy]
 # Clippy lints are documented here: https://rust-lang.github.io/rust-clippy/master/index.html
