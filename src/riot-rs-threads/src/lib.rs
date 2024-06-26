@@ -290,15 +290,22 @@ fn cleanup() -> ! {
 
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
-    THREADS.with_mut(|mut threads| {
+
+    let should_schedule = THREADS.with_mut(|mut threads| {
         let thread = threads.current().unwrap();
         let runqueue = thread.prio;
         let pid = thread.pid;
         if !threads.runqueue.is_empty(runqueue) {
             threads.runqueue.add(pid, runqueue);
-            schedule();
+            true
+        } else {
+            false
         }
-    })
+    });
+    if should_schedule {
+        schedule();
+    }
+
 }
 
 /// Suspends/ pauses the current thread's execution.
@@ -306,8 +313,8 @@ pub fn sleep() {
     THREADS.with_mut(|mut threads| {
         let pid = threads.current_pid().unwrap();
         threads.set_state(pid, ThreadState::Paused);
-        schedule();
     });
+    schedule();
 }
 
 /// Wakes up a thread and adds it to the runqueue.
