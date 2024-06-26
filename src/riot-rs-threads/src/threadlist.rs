@@ -22,7 +22,6 @@ impl ThreadList {
             threads.thread_blocklist[usize::from(thread_id)] = self.head;
             self.head = Some(thread_id);
             threads.set_state(thread_id, state);
-            crate::schedule();
         });
     }
 
@@ -39,8 +38,6 @@ impl ThreadList {
                 let old_state = threads.set_state(head, ThreadState::Running);
                 let prio = threads.threads[usize::from(head)].prio;
                 threads.runqueue.add(head, prio);
-                crate::sev();
-                crate::schedule();
                 old_state
             });
             Some((head, old_state))

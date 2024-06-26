@@ -21,7 +21,10 @@ pub enum WaitMode {
 ///
 /// Panics if `thread_id` is >= [`THREADS_NUMOF`](crate::THREADS_NUMOF).
 pub fn set(thread_id: ThreadId, mask: ThreadFlags) {
-    THREADS.with_mut(|mut threads| threads.flag_set(thread_id, mask))
+    if THREADS.with_mut(|mut threads| threads.flag_set(thread_id, mask)) {
+        crate::sev();
+        crate::schedule();
+    }
 }
 
 /// Waits until all flags in `mask` are set for the current thread.
@@ -36,6 +39,7 @@ pub fn wait_all(mask: ThreadFlags) -> ThreadFlags {
         if let Some(flags) = THREADS.with_mut(|mut threads| threads.flag_wait_all(mask)) {
             return flags;
         }
+        crate::schedule();
     }
 }
 
@@ -51,6 +55,7 @@ pub fn wait_any(mask: ThreadFlags) -> ThreadFlags {
         if let Some(flags) = THREADS.with_mut(|mut threads| threads.flag_wait_any(mask)) {
             return flags;
         }
+        crate::schedule();
     }
 }
 
@@ -67,6 +72,7 @@ pub fn wait_one(mask: ThreadFlags) -> ThreadFlags {
         if let Some(flags) = THREADS.with_mut(|mut threads| threads.flag_wait_one(mask)) {
             return flags;
         }
+        crate::schedule();
     }
 }
 
@@ -96,19 +102,18 @@ pub fn get() -> ThreadFlags {
 
 impl Threads {
     // thread flags implementation
-    fn flag_set(&mut self, thread_id: ThreadId, mask: ThreadFlags) {
+    fn flag_set(&mut self, thread_id: ThreadId, mask: ThreadFlags) -> bool {
         let thread = self.get_unchecked_mut(thread_id);
         thread.flags |= mask;
         match thread.state {
             ThreadState::FlagBlocked(WaitMode::Any(bits)) if thread.flags & bits != 0 => {}
             ThreadState::FlagBlocked(WaitMode::All(bits)) if thread.flags & bits == bits => {}
-            _ => return,
+            _ => return false,
         };
         let prio = thread.prio;
         self.set_state(thread_id, ThreadState::Running);
         self.runqueue.add(thread_id, prio);
-        crate::sev();
-        crate::schedule();
+        true
     }
 
     fn flag_wait_all(&mut self, mask: ThreadFlags) -> Option<ThreadFlags> {
@@ -119,7 +124,6 @@ impl Threads {
         } else {
             let thread_id = thread.pid;
             self.set_state(thread_id, ThreadState::FlagBlocked(WaitMode::All(mask)));
-            crate::schedule();
             None
         }
     }
@@ -133,7 +137,6 @@ impl Threads {
         } else {
             let thread_id = thread.pid;
             self.set_state(thread_id, ThreadState::FlagBlocked(WaitMode::Any(mask)));
-            crate::schedule();
             None
         }
     }
@@ -149,7 +152,6 @@ impl Threads {
         } else {
             let thread_id = thread.pid;
             self.set_state(thread_id, ThreadState::FlagBlocked(WaitMode::Any(mask)));
-            crate::schedule();
             None
         }
     }
