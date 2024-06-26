@@ -290,15 +290,20 @@ fn cleanup() -> ! {
 
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
-    THREADS.with_mut(|mut threads| {
+    let should_schedule = THREADS.with_mut(|mut threads| {
         let thread = threads.current().unwrap();
         let runqueue = thread.prio;
         let pid = thread.pid;
         if !threads.runqueue.is_empty(runqueue) {
             threads.runqueue.add(pid, runqueue);
-            schedule();
+            true
+        } else {
+            false
         }
-    })
+    });
+    if should_schedule {
+        schedule();
+    }
 }
 
 /// Suspends/ pauses the current thread's execution.
@@ -306,15 +311,15 @@ pub fn sleep() {
     THREADS.with_mut(|mut threads| {
         let pid = threads.current_pid().unwrap();
         threads.set_state(pid, ThreadState::Paused);
-        schedule();
     });
+    schedule();
 }
 
 /// Wakes up a thread and adds it to the runqueue.
 ///
 /// Returns `false` if no paused thread exists for `thread_id`.
 pub fn wakeup(thread_id: ThreadId) -> bool {
-    THREADS.with_mut(|mut threads| {
+    if THREADS.with_mut(|mut threads| {
         if usize::from(thread_id) >= THREADS_NUMOF {
             return false;
         }
@@ -325,10 +330,14 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
         let prio = thread.prio;
         threads.set_state(thread_id, ThreadState::Running);
         threads.runqueue.add(thread_id, prio);
+        true
+    }) {
         sev();
         schedule();
         true
-    })
+    } else {
+        false
+    }
 }
 
 /// Returns the size of the internal structure that holds the
