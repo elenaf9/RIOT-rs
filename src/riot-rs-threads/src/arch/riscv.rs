@@ -45,6 +45,10 @@ impl Arch for Cpu {
         // TODO: handle unwrap error?
         interrupt::enable(Interrupt::FROM_CPU_INTR1, interrupt::Priority::min()).unwrap();
     }
+
+    fn wfi() {
+        riscv::asm::wfi();
+    }
 }
 
 const fn default_trap_frame() -> TrapFrame {
@@ -127,7 +131,7 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
             let next_pid = match threads.runqueue.get_next() {
                 Some(pid) => pid,
                 None => {
-                    riscv::asm::wfi();
+                    Cpu::wfi();
                     return false;
                 }
             };
