@@ -107,6 +107,7 @@ impl Threads {
         let prio = thread.prio;
         self.set_state(thread_id, ThreadState::Running);
         self.runqueue.add(thread_id, prio);
+        crate::sev();
         crate::schedule();
     }
 

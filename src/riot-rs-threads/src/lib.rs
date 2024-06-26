@@ -34,7 +34,7 @@ pub use arch::schedule;
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::RunQueue;
-use smp::Multicore;
+use smp::{sev, Multicore};
 use thread::{Thread, ThreadState};
 
 /// a global defining the number of possible priority levels
@@ -325,6 +325,7 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
         let prio = thread.prio;
         threads.set_state(thread_id, ThreadState::Running);
         threads.runqueue.add(thread_id, prio);
+        sev();
         schedule();
         true
     })

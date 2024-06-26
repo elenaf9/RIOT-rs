@@ -4,6 +4,10 @@ pub trait Multicore {
     fn core_id() -> u32;
 
     fn startup_cores();
+
+    fn wait_for_wakeup();
+
+    fn sev();
 }
 
 cfg_if::cfg_if! {
@@ -12,6 +16,8 @@ cfg_if::cfg_if! {
         pub use rp2040::Chip;
     }
     else {
+        use crate::{Arch, Cpu};
+
         pub struct Chip;
         impl Multicore for Chip {
             const CORES: u32 = 1;
@@ -20,7 +26,17 @@ cfg_if::cfg_if! {
                 0
             }
 
-            fn startup_cores() { }
+            fn startup_cores() {}
+
+            fn wait_for_wakeup() {
+                Cpu::wfi();
+            }
+
+            fn sev() {}
         }
     }
+}
+
+pub fn sev() {
+    Chip::sev()
 }
