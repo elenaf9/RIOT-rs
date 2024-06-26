@@ -1,4 +1,4 @@
-use super::CoreId;
+use super::{Arch, CoreId, Cpu};
 
 pub trait Multicore {
     const CORES: u32;
@@ -6,6 +6,10 @@ pub trait Multicore {
     fn core_id() -> CoreId;
 
     fn startup_cores();
+
+    fn wait_for_wakeup();
+
+    fn sev();
 }
 
 cfg_if::cfg_if! {
@@ -14,6 +18,7 @@ cfg_if::cfg_if! {
         pub use rp2040::Chip;
     }
     else {
+
         pub struct Chip;
         impl Multicore for Chip {
             const CORES: u32 = 1;
@@ -22,7 +27,17 @@ cfg_if::cfg_if! {
                 CoreId::new(0)
             }
 
-            fn startup_cores() { }
+            fn startup_cores() {}
+
+            fn wait_for_wakeup() {
+                Cpu::wfi();
+            }
+
+            fn sev() {}
         }
     }
+}
+
+pub fn sev() {
+    Chip::sev()
 }
