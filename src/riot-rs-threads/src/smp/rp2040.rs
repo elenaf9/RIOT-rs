@@ -30,4 +30,12 @@ impl Multicore for Chip {
             spawn_core1(CORE1::steal(), STACK.take(), start_threading);
         }
     }
+
+    fn wait_for_wakeup() {
+        cortex_m::asm::wfe()
+    }
+
+    fn sev() {
+        cortex_m::asm::sev()
+    }
 }

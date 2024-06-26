@@ -51,6 +51,7 @@ impl ThreadList {
                 let (old_state, core_id) = threads.set_state(head, ThreadState::Running);
                 if let Some(_core_id) = core_id {
                     crate::schedule();
+                    crate::sev();
                 }
                 old_state
             });
