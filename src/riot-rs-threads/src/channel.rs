@@ -72,7 +72,9 @@ impl<T: Copy + Send> Channel<T> {
                     );
                 }
             }
-        })
+        });
+        crate::sev();
+        crate::schedule();
     }
 
     /// Try to send on the channel (non-blocking).
@@ -145,6 +147,8 @@ impl<T: Copy + Send> Channel<T> {
                 }
             }
         });
+        crate::sev();
+        crate::schedule();
 
         // ensure the compiler honors what happened to memory while the thread
         // was scheduled away.

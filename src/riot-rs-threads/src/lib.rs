@@ -307,15 +307,19 @@ fn cleanup() -> ! {
 
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
-    THREADS.with_mut(|mut threads| {
+    let should_schedule = THREADS.with_mut(|mut threads| {
         let Some((pid, prio)) = threads.current().map(|t| (t.pid, t.prio)) else {
-            return;
+            return false;
         };
-        if !threads.runqueue.is_empty(prio) {
-            threads.runqueue.add(pid, prio);
-            schedule();
+        if threads.runqueue.is_empty(prio) {
+            return false;
         }
-    })
+        threads.runqueue.add(pid, prio);
+        true
+    });
+    if should_schedule {
+        schedule();
+    }
 }
 
 /// Suspends/ pauses the current thread's execution.
@@ -325,15 +329,15 @@ pub fn sleep() {
             return;
         };
         threads.set_state(pid, ThreadState::Paused);
-        schedule();
     });
+    schedule();
 }
 
 /// Wakes up a thread and adds it to the runqueue.
 ///
 /// Returns `false` if no paused thread exists for `thread_id`.
 pub fn wakeup(thread_id: ThreadId) -> bool {
-    THREADS.with_mut(|mut threads| {
+    if THREADS.with_mut(|mut threads| {
         if usize::from(thread_id) >= THREADS_NUMOF {
             return false;
         }
@@ -344,10 +348,14 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
         let prio = thread.prio;
         threads.set_state(thread_id, ThreadState::Running);
         threads.runqueue.add(thread_id, prio);
+        true
+    }) {
         sev();
         schedule();
         true
-    })
+    } else {
+        false
+    }
 }
 
 /// Returns the size of the internal structure that holds the

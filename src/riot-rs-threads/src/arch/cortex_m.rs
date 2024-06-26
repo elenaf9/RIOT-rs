@@ -191,18 +191,8 @@ unsafe extern "C" fn PendSV() {
 #[no_mangle]
 unsafe fn sched() -> u128 {
     loop {
-        if let Some(res) = critical_section::with(|cs| {
-            let threads = unsafe { &mut *THREADS.as_ptr(cs) };
-            let next_pid = match threads.runqueue.pop_next() {
-                Some(pid) => pid,
-                None => {
-                    crate::smp::Chip::wait_for_wakeup();
-
-                    // this fence seems necessary, see #310.
-                    core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
-                    return None;
-                }
-            };
+        if let Some(res) = THREADS.with_mut(|mut threads| {
+            let next_pid = threads.runqueue.pop_next()?;
 
             // `current_high_regs` will be null if there is no current thread.
             // This is only the case once, when the very first thread starts running.
@@ -238,5 +228,6 @@ unsafe fn sched() -> u128 {
         }) {
             break res;
         }
+        crate::smp::Chip::wait_for_wakeup();
     }
 }
