@@ -108,6 +108,7 @@ impl Threads {
         } {
             if let Some(_core_id) = self.set_state(thread_id, ThreadState::Running).1 {
                 crate::schedule();
+                crate::sev();
             }
         }
     }
