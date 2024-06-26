@@ -1,5 +1,4 @@
-use super::Arch;
-use crate::Thread;
+use crate::{Arch, Multicore, Thread};
 use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::SCB;
@@ -64,6 +63,10 @@ impl Arch for Cpu {
     #[inline(always)]
     fn start_threading() {
         Self::schedule();
+    }
+
+    fn wfi() {
+        cortex_m::asm::wfi();
     }
 }
 
@@ -171,7 +174,8 @@ unsafe fn sched() -> u128 {
             let next_pid = match threads.runqueue.pop_next() {
                 Some(pid) => pid,
                 None => {
-                    cortex_m::asm::wfi();
+                    crate::smp::Chip::wait_for_wakeup();
+
                     // this fence seems necessary, see #310.
                     core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
                     return None;
