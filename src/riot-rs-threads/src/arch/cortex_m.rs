@@ -66,6 +66,14 @@ impl Arch for Cpu {
     fn start_threading() {
         Self::schedule();
     }
+
+    fn wfi() {
+        // see https://cliffle.com/blog/stm32-wfi-bug/
+        #[cfg(context = "stm32")]
+        cortex_m::asm::isb();
+
+        cortex_m::asm::wfi();
+    }
 }
 
 #[cfg(any(armv7m, armv8m))]
@@ -173,11 +181,7 @@ unsafe fn sched() -> u128 {
             let next_pid = match threads.runqueue.get_next(core) {
                 Some(pid) => pid,
                 None => {
-                    cortex_m::asm::wfi();
-
-                    // see https://cliffle.com/blog/stm32-wfi-bug/
-                    #[cfg(context = "stm32")]
-                    cortex_m::asm::isb();
+                    crate::smp::Chip::wait_for_wakeup();
 
                     // this fence seems necessary, see #310.
                     core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);

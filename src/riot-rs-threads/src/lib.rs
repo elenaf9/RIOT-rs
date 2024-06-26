@@ -35,7 +35,7 @@ pub use arch::schedule;
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::{GlobalRunqueue, RunQueue};
-use smp::Multicore;
+use smp::{sev, Multicore};
 use thread::{Thread, ThreadState};
 
 /// a global defining the number of possible priority levels
@@ -333,6 +333,7 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
             if state == ThreadState::Paused {
                 if let Some(_core_id) = threads.set_state(thread_id, ThreadState::Running).1 {
                     schedule();
+                    sev();
                 }
                 true
             } else {
