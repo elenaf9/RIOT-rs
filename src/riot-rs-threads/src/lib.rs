@@ -307,10 +307,9 @@ pub fn yield_same() {
         let thread = threads.current().unwrap();
         let runqueue = thread.prio;
         let pid = thread.pid;
-        if let Some(_core_id) = threads.runqueue.advance(pid, runqueue) {
-            schedule();
-        }
-    })
+        threads.runqueue.advance(pid, runqueue);
+    });
+    schedule();
 }
 
 /// Suspends/ pauses the current thread's execution.
@@ -318,8 +317,8 @@ pub fn sleep() {
     THREADS.with_mut(|mut threads| {
         let pid = threads.current_pid().unwrap();
         threads.set_state(pid, ThreadState::Paused);
-        schedule();
     });
+    schedule();
 }
 
 /// Wakes up a thread and adds it to the runqueue.

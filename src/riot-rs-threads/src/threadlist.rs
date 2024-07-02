@@ -34,8 +34,8 @@ impl ThreadList {
                 _ => self.head = Some(pid),
             }
             threads.set_state(pid, state);
-            crate::schedule();
         });
+        crate::schedule();
     }
 
     /// Removes the head from this [`ThreadList`].
@@ -46,15 +46,14 @@ impl ThreadList {
     /// Returns the thread's [`ThreadId`] and its previous [`ThreadState`].
     pub fn pop(&mut self, cs: CriticalSection) -> Option<(ThreadId, ThreadState)> {
         if let Some(head) = self.head {
-            let old_state = THREADS.with_mut_cs(cs, |mut threads| {
+            let (old_state, core_id) = THREADS.with_mut_cs(cs, |mut threads| {
                 self.head = threads.thread_blocklist[usize::from(head)].take();
-                let (old_state, core_id) = threads.set_state(head, ThreadState::Running);
-                if let Some(_core_id) = core_id {
-                    crate::schedule();
-                    crate::sev();
-                }
-                old_state
+                threads.set_state(head, ThreadState::Running)
             });
+            if let Some(_core_id) = core_id {
+                crate::sev();
+                crate::schedule();
+            }
             Some((head, old_state))
         } else {
             None
