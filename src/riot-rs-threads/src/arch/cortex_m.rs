@@ -3,7 +3,7 @@ use crate::smp::Multicore;
 use crate::Thread;
 use core::arch::asm;
 use core::ptr::write_volatile;
-use cortex_m::peripheral::SCB;
+use cortex_m::peripheral::{scb::SystemHandler, SCB};
 
 use crate::{cleanup, THREADS};
 
@@ -64,6 +64,11 @@ impl Arch for Cpu {
 
     #[inline(always)]
     fn start_threading() {
+        unsafe {
+            // Make sure PendSV has a low priority.
+            let mut p = cortex_m::Peripherals::steal();
+            p.SCB.set_priority(SystemHandler::PendSV, 0xFF);
+        }
         Self::schedule();
     }
 
