@@ -41,6 +41,7 @@ impl From<ThreadId> for usize {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct CoreId(u8);
 
 impl CoreId {
