@@ -86,7 +86,7 @@ pub struct RunQueue<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES
     /// in `0..N_QUEUES`.
     bitcache: usize,
     queues: clist::CList<N_QUEUES, N_THREADS>,
-    next: [Option<ThreadId>; N_CORES],
+    next: [(bool, ThreadId); N_CORES],
 }
 
 impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
@@ -101,7 +101,7 @@ impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
         RunQueue {
             bitcache: 0,
             queues: CList::new(),
-            next: [None; N_CORES],
+            next: [(false, ThreadId::new(N_THREADS as u8)); N_CORES],
         }
     }
 
@@ -110,7 +110,8 @@ impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
         if usize::from(core) >= N_CORES {
             return None;
         }
-        self.next[usize::from(core)]
+        let (is_running, next) = self.next[usize::from(core)];
+        is_running.then(|| next)
     }
 
     /// Returns the `n` highest priority threads in the [`RunQueue`].
@@ -247,11 +248,15 @@ impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
         let next = self.get_next_n();
         let mut bitmap_next = 0;
         let mut bitmap_allocated = 0;
+        let mut bitmap_prev = 0;
         for i in 0..N_CORES {
             if let Some(id) = next[i] {
                 bitmap_next |= 1 << id.0
             }
-            if let Some(id) = self.next[i] {
+            let (is_running, id) = self.next[i];
+            bitmap_prev |= 1 << id.0;
+
+            if is_running {
                 bitmap_allocated |= 1 << id.0
             }
         }
@@ -259,11 +264,30 @@ impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
             return None;
         }
         let diff = bitmap_next ^ bitmap_allocated;
+
+        // Check if thread was previously running on a now idle core.
+        // If that's the case, reassign to the same core.
+        let reassigned = diff & bitmap_next & bitmap_prev;
+        if reassigned > 0 {
+            let id = u8::from_bitmap(reassigned).map(ThreadId).unwrap();
+            let changed_core = self.next.iter().position(|(_, i)| *i == id).unwrap();
+            self.next[changed_core].0 = true;
+            return Some(CoreId(changed_core as u8));
+        }
+
         let prev_allocated = u8::from_bitmap(bitmap_allocated & diff).map(ThreadId);
         let new_allocated = u8::from_bitmap(bitmap_next & diff).map(ThreadId);
+        let changed_core = self
+            .next
+            .iter()
+            .position(|(running, id)| running.then(|| *id) == prev_allocated)
+            .unwrap();
 
-        let changed_core = self.next.iter().position(|i| *i == prev_allocated).unwrap();
-        self.next[changed_core] = new_allocated;
+        if let Some(id) = new_allocated {
+            self.next[changed_core] = (true, id);
+        } else {
+            self.next[changed_core].0 = false;
+        }
         return Some(CoreId(changed_core as u8));
     }
 }
@@ -297,42 +321,85 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> GlobalRunqueue<N_QUEUES, N_T
     #[inline]
     fn reallocate(&mut self) -> Option<CoreId> {
         let next = self.peek_head(self.bitcache);
-        if next == self.next[0] {
-            return None;
+        match (next, self.next[0]) {
+            (None, (false, _)) => None,
+            (None, (true, _)) => {
+                self.next[0].0 = false;
+                Some(CoreId(0))
+            }
+            (Some(id_new), (true, id_old)) if id_new == id_old => None,
+            (Some(id), _) => {
+                self.next[0] = (true, id);
+                Some(CoreId(0))
+            }
         }
-        self.next[0] = next;
-        return Some(CoreId(0));
     }
 }
 
 impl<const N_QUEUES: usize, const N_THREADS: usize> GlobalRunqueue<N_QUEUES, N_THREADS, 2>
     for RunQueue<N_QUEUES, N_THREADS, 2>
 {
-    fn reallocate(&mut self) -> Option<CoreId> {
-        let next = self.get_next_n();
+    // fn reallocate(&mut self) -> Option<CoreId> {
+    //     let next = self.get_next_n();
 
-        if self.next[0] == next[0] {
-            if self.next[1] == next[1] {
-                return None;
-            }
-            self.next[1] = next[1];
-            return Some(CoreId(1));
-        }
-        if self.next[1] == next[0] {
-            if self.next[0] == next[1] {
-                return None;
-            }
-            self.next[0] = next[1];
-            return Some(CoreId(0));
-        }
-        if self.next[1] == next[1] {
-            self.next[0] = next[0];
-            return Some(CoreId(0));
-        } else {
-            self.next[1] = next[0];
-            Some(CoreId(1))
-        }
-    }
+    //     if self.next[0] == next[0] {
+    //         if self.next[1] == next[1] {
+    //             return None;
+    //         }
+    //         self.next[1] = next[1];
+    //         return Some(CoreId(1));
+    //     }
+    //     if self.next[1] == next[0] {
+    //         if self.next[0] == next[1] {
+    //             return None;
+    //         }
+    //         self.next[0] = next[1];
+    //         return Some(CoreId(0));
+    //     }
+    //     if self.next[1] == next[1] {
+    //         self.next[0] = next[0];
+    //         return Some(CoreId(0));
+    //     } else {
+    //         self.next[1] = next[0];
+    //         Some(CoreId(1))
+    //     }
+    // }
+
+    // fn reallocate(&mut self) -> Option<CoreId> {
+    //     let next = self.get_next_n();
+    //     let self_next_0 = self.next[0].0.then(|| self.next[0].1);
+    //     let self_next_1 = self.next[1].0.then(|| self.next[1].1);
+
+    //     if next[0].is_none() {
+    //         // No thread running.
+    //         if self.next[0].0 {
+    //             self.next[0].0 = false;
+    //             return Some(CoreId(0));
+    //         }
+    //         if self.next[1].0 {
+    //             self.next[1].0 = false;
+    //             return Some(CoreId(1));
+    //         }
+    //         return None;
+    //     }
+    //     let next_0 = next[0].unwrap();
+    //     if next_0 == self.next[0].1 {
+    //         if !self.next[0].0 {
+    //             self.next[0].0 = true;
+    //             return Some(CoreId(0));
+    //         }
+    //     } else if next_0 == self.next[1].1 {
+    //         if !self.next[1].0 {
+    //             self.next[1].0 = true;
+    //             return Some(CoreId(1));
+    //         }
+    //     } else {
+    //         if !self.next[0].1 {
+    //             self.next[0] = (true, next_0);
+    //             return Some(CoreId(0));
+
+    //         }
+    //     }
 
     fn advance(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
         debug_assert!((rq.0 as usize) < N_QUEUES);
