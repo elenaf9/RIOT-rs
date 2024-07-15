@@ -4,6 +4,7 @@ use crate::Thread;
 use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
+use riot_rs_runqueue::GlobalRunqueue;
 
 use crate::{cleanup, THREADS};
 
