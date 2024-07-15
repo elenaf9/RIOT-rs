@@ -258,16 +258,19 @@ mod tests {
 
     #[test]
     fn multicore_invalid_core() {
-        let mut runqueue: RunQueue<8, 32, 1> = RunQueue::new();
+        let mut runqueue: RunQueue<8, 32, 2> = RunQueue::new();
         assert_eq!(
             runqueue.add(ThreadId::new(0), RunqueueId::new(2)),
             Some(CoreId::new(0))
         );
-        assert_eq!(runqueue.add(ThreadId::new(1), RunqueueId::new(2)), None);
+        assert_eq!(
+            runqueue.add(ThreadId::new(1), RunqueueId::new(2)),
+            Some(CoreId::new(1))
+        );
         assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
-        assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
+        assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
         // Querying for n > `N_CORES` shouldn't cause a panic.
-        assert_eq!(runqueue.get_next(CoreId::new(1)), None)
+        assert_eq!(runqueue.get_next(CoreId::new(2)), None)
     }
 
     #[test]
