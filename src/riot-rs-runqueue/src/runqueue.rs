@@ -105,15 +105,6 @@ impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
         }
     }
 
-    /// Returns the next thread that should run on this core.
-    pub fn get_next(&self, core: CoreId) -> Option<ThreadId> {
-        if usize::from(core) >= N_CORES {
-            return None;
-        }
-        let (is_running, next) = self.next[usize::from(core)];
-        is_running.then(|| next)
-    }
-
     /// Returns the `n` highest priority threads in the [`RunQueue`].
     ///
     /// This iterates through all non-empty runqueues with descending
@@ -151,7 +142,6 @@ impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
         next_list
     }
 
-    #[inline]
     fn peek_head(&self, bitcache: usize) -> Option<ThreadId> {
         // Switch to highest priority runqueue remaining
         // in the bitcache.
@@ -201,6 +191,9 @@ pub trait GlobalRunqueue<const N_QUEUES: usize, const N_THREADS: usize, const N_
     ///
     /// Returns a [`CoreId`] if the allocation for this core changed.
     fn reallocate(&mut self) -> Option<CoreId>;
+
+    /// Returns the next thread that should run on this core.
+    fn get_next(&self, core: CoreId) -> Option<ThreadId>;
 }
 
 impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
@@ -290,11 +283,28 @@ impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
         }
         return Some(CoreId(changed_core as u8));
     }
+
+    default fn get_next(&self, core: CoreId) -> Option<ThreadId> {
+        if usize::from(core) >= N_CORES {
+            return None;
+        }
+        let (is_running, next) = self.next[usize::from(core)];
+        is_running.then(|| next)
+    }
 }
 
 impl<const N_QUEUES: usize, const N_THREADS: usize> GlobalRunqueue<N_QUEUES, N_THREADS, 1>
     for RunQueue<N_QUEUES, N_THREADS>
 {
+    fn add(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
+        debug_assert!(usize::from(n) < N_THREADS);
+        debug_assert!(usize::from(rq) < N_QUEUES);
+        let bitcache = self.bitcache;
+        self.bitcache |= 1 << rq.0;
+        self.queues.push(n.0, rq.0);
+        (self.bitcache > bitcache).then(|| CoreId(0))
+    }
+
     /// Advances runqueue number `rq`.
     ///
     /// This is used to "yield" to another thread of *the same* priority.
@@ -302,11 +312,9 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> GlobalRunqueue<N_QUEUES, N_T
     /// Returns a [`CoreId`] if the allocation for this core changed.
     fn advance(&mut self, _: ThreadId, rq: RunqueueId) -> Option<CoreId> {
         debug_assert!((rq.0 as usize) < N_QUEUES);
-        self.queues.advance(rq.0);
-        self.reallocate()
+        self.queues.advance(rq.0).then(|| CoreId(0))
     }
 
-    #[inline]
     fn del(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
         debug_assert!((n.0 as usize) < N_THREADS);
         debug_assert!((rq.0 as usize) < N_QUEUES);
@@ -315,24 +323,15 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> GlobalRunqueue<N_QUEUES, N_T
         if self.queues.is_empty(rq.0) {
             self.bitcache &= !(1 << rq.0);
         }
-        self.reallocate()
+        Some(CoreId(0))
     }
 
-    #[inline]
+    fn get_next(&self, _core: CoreId) -> Option<ThreadId> {
+        self.peek_head(self.bitcache)
+    }
+
     fn reallocate(&mut self) -> Option<CoreId> {
-        let next = self.peek_head(self.bitcache);
-        match (next, self.next[0]) {
-            (None, (false, _)) => None,
-            (None, (true, _)) => {
-                self.next[0].0 = false;
-                Some(CoreId(0))
-            }
-            (Some(id_new), (true, id_old)) if id_new == id_old => None,
-            (Some(id), _) => {
-                self.next[0] = (true, id);
-                Some(CoreId(0))
-            }
-        }
+        unimplemented!()
     }
 }
 
@@ -526,7 +525,6 @@ mod clist {
             }
         }
 
-        #[inline]
         pub fn peek_head(&self, rq: u8) -> Option<u8> {
             if self.tail[rq as usize] == Self::sentinel() {
                 None
@@ -535,10 +533,12 @@ mod clist {
             }
         }
 
-        pub fn advance(&mut self, rq: u8) {
-            if self.tail[rq as usize] != Self::sentinel() {
-                self.tail[rq as usize] = self.next_idxs[self.tail[rq as usize] as usize];
+        pub fn advance(&mut self, rq: u8) -> bool {
+            if self.tail[rq as usize] == Self::sentinel() {
+                return false;
             }
+            self.tail[rq as usize] = self.next_idxs[self.tail[rq as usize] as usize];
+            true
         }
 
         pub fn peek_next(&self, curr: u8) -> u8 {
