@@ -21,10 +21,11 @@ pub enum WaitMode {
 ///
 /// Panics if `thread_id` is >= [`THREADS_NUMOF`](crate::THREADS_NUMOF).
 pub fn set(thread_id: ThreadId, mask: ThreadFlags) {
-    if THREADS.with_mut(|mut threads| threads.flag_set(thread_id, mask)) {
-        crate::sev();
-        crate::schedule();
+    if !THREADS.with_mut(|mut threads| threads.flag_set(thread_id, mask)) {
+        return;
     }
+    crate::sev();
+    crate::schedule();
 }
 
 /// Waits until all flags in `mask` are set for the current thread.
@@ -110,9 +111,8 @@ impl Threads {
             ThreadState::FlagBlocked(WaitMode::All(bits)) if thread.flags & bits == bits => {}
             _ => return false,
         };
-        let prio = thread.prio;
         self.set_state(thread_id, ThreadState::Running);
-        self.runqueue.add(thread_id, prio);
+        self.add_to_runqueue(thread_id);
         true
     }
 
