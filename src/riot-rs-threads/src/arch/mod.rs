@@ -1,4 +1,4 @@
-use crate::Thread;
+use crate::{thread::ThreadState, Thread};
 
 /// Arch-specific implementations for the scheduler.
 pub trait Arch {
@@ -60,5 +60,16 @@ cfg_if::cfg_if! {
 pub type ThreadData = <Cpu as Arch>::ThreadData;
 
 pub fn schedule() {
+    crate::THREADS.with_mut(|mut threads| {
+        let &Thread {
+            pid, state, prio, ..
+        } = match threads.current_pid() {
+            Some(pid) => threads.get_unchecked(pid),
+            None => return,
+        };
+        if state == ThreadState::Running {
+            threads.runqueue.add(pid, prio);
+        }
+    });
     Cpu::schedule()
 }
