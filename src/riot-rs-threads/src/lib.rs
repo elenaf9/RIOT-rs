@@ -119,9 +119,9 @@ impl Threads {
         }
     }
 
-    // fn get_unchecked(&self, thread_id: ThreadId) -> &Thread {
-    //     &self.threads[thread_id as usize]
-    // }
+    fn get_unchecked(&self, thread_id: ThreadId) -> &Thread {
+        &self.threads[usize::from(thread_id)]
+    }
 
     /// Returns mutable access to any thread data.
     ///
@@ -169,6 +169,11 @@ impl Threads {
         } else {
             None
         }
+    }
+
+    fn add_to_runqueue(&mut self, thread_id: ThreadId) {
+        let prio = self.get_unchecked(thread_id).prio;
+        self.runqueue.add(thread_id, prio);
     }
 }
 
@@ -290,18 +295,12 @@ fn cleanup() -> ! {
 
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
-    let should_schedule = THREADS.with_mut(|mut threads| {
-        let thread = threads.current().unwrap();
-        let runqueue = thread.prio;
-        let pid = thread.pid;
-        if !threads.runqueue.is_empty(runqueue) {
-            threads.runqueue.add(pid, runqueue);
-            true
-        } else {
-            false
-        }
-    });
-    if should_schedule {
+    if THREADS.with_mut(|mut threads| {
+        let Some(rq) = threads.current().map(|t| t.prio) else {
+            return false;
+        };
+        !threads.runqueue.is_empty(rq)
+    }) {
         schedule();
     }
 }
@@ -327,9 +326,8 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
         if thread.state != ThreadState::Paused {
             return false;
         }
-        let prio = thread.prio;
         threads.set_state(thread_id, ThreadState::Running);
-        threads.runqueue.add(thread_id, prio);
+        threads.add_to_runqueue(thread_id);
         true
     }) {
         sev();
