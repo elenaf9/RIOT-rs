@@ -184,15 +184,18 @@ unsafe fn sched() -> u128 {
                     return Some(0);
                 }
 
-                threads.threads[usize::from(current_pid)].sp =
-                    cortex_m::register::psp::read() as usize;
-                threads.current_thread = Some(next_pid);
-
-                current_high_regs = threads.threads[usize::from(current_pid)].data.as_ptr();
+                let current = &mut threads.threads[usize::from(current_pid)];
+                current.sp = cortex_m::register::psp::read() as usize;
+                current_high_regs = current.data.as_ptr();
             } else {
-                threads.current_thread = Some(next_pid);
-                current_high_regs = core::ptr::null();
-            };
+                // Assumption: this branch is only executed when we just started threading 
+                // and there was is previous thread and no saved context for the next thread.
+                // Use its `data` property as dummy pointer.
+                current_high_regs = threads.threads[usize::from(next_pid)].data.as_ptr();
+            }
+
+            threads.current_thread = Some(next_pid);
+
 
             let next = &threads.threads[usize::from(next_pid)];
             let next_sp = next.sp as usize;
