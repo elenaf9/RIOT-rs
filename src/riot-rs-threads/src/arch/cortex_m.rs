@@ -1,9 +1,8 @@
-use crate::{Arch, Multicore, Thread};
 use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
 
-use crate::{cleanup, THREADS};
+use crate::{cleanup, smp::Multicore, Arch, Thread, THREADS};
 
 #[cfg(not(any(armv6m, armv7m, armv8m)))]
 compile_error!("no supported ARM variant selected");
@@ -34,20 +33,20 @@ impl Arch for Cpu {
 
         // 1. The stack starts at the highest address and grows downwards.
         // 2. A full stored context also contains R4-R11 and the stack pointer,
-        //    thus an additional 36 bytes need to be reserved.
+        //    thus an additional 60 bytes need to be reserved.
         // 3. Cortex-M expects the SP to be 8 byte aligned, so we chop the lowest
         //    7 bits by doing `& 0xFFFFFFF8`.
-        let stack_pos = ((stack_start + stack.len() - 36) & 0xFFFFFFF8) as *mut usize;
+        let stack_pos = ((stack_start + stack.len() - 60) & 0xFFFFFFF8) as *mut usize;
 
         unsafe {
-            write_volatile(stack_pos.offset(0), arg); // -> R0
-            write_volatile(stack_pos.offset(1), 1); // -> R1
-            write_volatile(stack_pos.offset(2), 2); // -> R2
-            write_volatile(stack_pos.offset(3), 3); // -> R3
-            write_volatile(stack_pos.offset(4), 12); // -> R12
-            write_volatile(stack_pos.offset(5), cleanup as usize); // -> LR
-            write_volatile(stack_pos.offset(6), func); // -> PC
-            write_volatile(stack_pos.offset(7), 0x01000000); // -> APSR
+            write_volatile(stack_pos.offset(8), arg); // -> R0
+            write_volatile(stack_pos.offset(9), 1); // -> R1
+            write_volatile(stack_pos.offset(10), 2); // -> R2
+            write_volatile(stack_pos.offset(11), 3); // -> R3
+            write_volatile(stack_pos.offset(12), 12); // -> R12
+            write_volatile(stack_pos.offset(13), cleanup as usize); // -> LR
+            write_volatile(stack_pos.offset(14), func); // -> PC
+            write_volatile(stack_pos.offset(15), 0x01000000); // -> APSR
         }
 
         thread.sp = stack_pos as usize;
@@ -66,6 +65,7 @@ impl Arch for Cpu {
             // Make sure PendSV has a low priority.
             let mut p = cortex_m::Peripherals::steal();
             p.SCB.set_priority(SystemHandler::PendSV, 0xFF);
+            cortex_m::register::psp::write(0);
         }
         Self::schedule();
     }
@@ -87,18 +87,30 @@ unsafe extern "C" fn PendSV() {
     unsafe {
         asm!(
             "
-            bl {sched}
+            mrs.n r0, psp
+            
             cmp r0, #0
-            /* label rules:
-             * - number only
-             * - no combination of *only* [01]
-             * - add f or b for 'next matching forward/backward'
-             * so let's use '99' forward ('99f')
-             */
-            beq 99f
-            stmia r1, {{r4-r11}}
-            ldmia r2, {{r4-r11}}
+            beq 95f
+
+            stmfd r0!, {{r4-r11}}
             msr.n psp, r0
+
+            95:
+            bl {sched}
+
+            cmp r0, #0
+            beq 98f
+
+            ldmfd r0!, {{r4-r11}}
+            msr.n psp, r0
+            b 99f
+
+
+            98:
+            mrs.n r0, psp
+            adds r0, 32
+            msr.n psp, r0
+
             99:
             movw LR, #0xFFFd
             movt LR, #0xFFFF
@@ -118,35 +130,43 @@ unsafe extern "C" fn PendSV() {
     unsafe {
         asm!(
             "
-            bl sched
+            mrs.n  r0, psp
+            
             cmp r0, #0
-            beq 99f
+            beq 95f
 
-            //stmia r1!, {{r4-r7}}
-            str r4, [r1, #16]
-            str r5, [r1, #20]
-            str r6, [r1, #24]
-            str r7, [r1, #28]
+            mrs.n r0, psp
+            subs r0, r0, 32
+            msr.n psp, r0
 
-            mov  r4, r8
-            mov  r5, r9
-            mov  r6, r10
-            mov  r7, r11
-
-            str r4, [r1, #0]
-            str r5, [r1, #4]
-            str r6, [r1, #8]
-            str r7, [r1, #12]
-
-            //
-            ldmia r2!, {{r4-r7}}
-            mov r11, r7
-            mov r10, r6
-            mov r9,  r5
+            stmea r0!, {{r4-r7}}
             mov r8,  r4
-            ldmia r2!, {{r4-r7}}
+            mov r9,  r5
+            mov r10, r6
+            mov r11, r7
+            stmea r0!, {{r4-r7}}
+
+            95:
+            bl sched
+
+            cmp r0, #0
+            beq 98f
+
+            ldmfd r0!, {{r4-r7}}
+            mov r8,  r4
+            mov r9,  r5
+            mov r10, r6
+            mov r11, r7
+            ldmfd r0!, {{r4-r7}}
 
             msr.n psp, r0
+            b 99f
+
+            98:
+            mrs.n r0, psp
+            adds r0, 32
+            msr.n psp, r0
+
             99:
             ldr r0, 999f
             mov LR, r0
@@ -167,21 +187,15 @@ unsafe extern "C" fn PendSV() {
 /// This may be current thread, or a new one.
 ///
 /// Returns:
-/// - `0` in `r0` if the next thread in the runqueue is the currently running thread
-/// - Else it writes into the following registers:
-///   - `r1`: pointer to [`Thread::high_regs`] from old thread (to store old register state)
-///   - `r2`: pointer to [`Thread::high_regs`] from new thread (to load new register state)
-///   - `r0`: stack-pointer for new thread
+/// - `r0`: 0 if the next thread in the runqueue is the currently running thread, else the SP of the next thread.
 ///
 /// This function is called in PendSV.
-// TODO: make arch independent, or move to arch
 #[no_mangle]
-unsafe fn sched() -> u128 {
+unsafe fn sched() -> usize {
     loop {
         if let Some(res) = THREADS.with_mut(|mut threads| {
             let next_pid = threads.runqueue.pop_next()?;
 
-            let current_high_regs;
             if let Some(current_pid) = threads.current_pid() {
                 if next_pid == current_pid {
                     return Some(0);
@@ -189,28 +203,13 @@ unsafe fn sched() -> u128 {
 
                 threads.threads[usize::from(current_pid)].sp =
                     cortex_m::register::psp::read() as usize;
-                *threads.current_pid_mut() = Some(next_pid);
+            }
 
-                current_high_regs = threads.threads[usize::from(current_pid)].data.as_ptr();
-            } else {
-                *threads.current_pid_mut() = Some(next_pid);
-                current_high_regs = core::ptr::null();
-            };
+            *threads.current_pid_mut() = Some(next_pid);
 
             let next = &threads.threads[usize::from(next_pid)];
             let next_sp = next.sp as usize;
-            let next_high_regs = next.data.as_ptr() as usize;
-
-            // PendSV expects these three pointers in r0, r1 and r2:
-            // r0 = &next.sp
-            // r1 = &current.high_regs
-            // r2 = &next.high_regs
-            // On Cortex-M, a u128 as return value is passed in registers r0-r3.
-            // So let's use that.
-            let res: u128 =
-                //  (r0)                     (r1)                        (r2)
-                (next_sp as u128) |  ((current_high_regs as u128) << 32) | ((next_high_regs as u128) << 64);
-            Some(res)
+            Some(next_sp)
         }) {
             break res;
         }
