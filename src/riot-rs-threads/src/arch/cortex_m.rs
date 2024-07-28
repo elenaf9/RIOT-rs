@@ -2,7 +2,7 @@ use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
 
-use crate::{cleanup, smp::Multicore, Arch, Thread, THREADS};
+use crate::{cleanup, smp::Multicore, Arch, Thread, ThreadState, THREADS};
 
 #[cfg(not(any(armv6m, armv7m, armv8m)))]
 compile_error!("no supported ARM variant selected");
@@ -192,19 +192,27 @@ unsafe extern "C" fn PendSV() {
 /// This function is called in PendSV.
 #[no_mangle]
 unsafe fn sched() -> usize {
+    THREADS.with_mut(|mut threads| {
+        if let Some(current_pid) = threads.current_pid() {
+            let &mut Thread {
+                pid,
+                state,
+                prio,
+                ref mut sp,
+                ..
+            } = threads.get_unchecked_mut(current_pid);
+            *sp = cortex_m::register::psp::read() as usize;
+            if state == ThreadState::Running {
+                threads.runqueue.add(pid, prio);
+            }
+        }
+    });
     loop {
         if let Some(res) = THREADS.with_mut(|mut threads| {
             let next_pid = threads.runqueue.pop_next()?;
-
-            if let Some(current_pid) = threads.current_pid() {
-                if next_pid == current_pid {
-                    return Some(0);
-                }
-
-                threads.threads[usize::from(current_pid)].sp =
-                    cortex_m::register::psp::read() as usize;
+            if Some(next_pid) == threads.current_pid() {
+                return Some(0);
             }
-
             *threads.current_pid_mut() = Some(next_pid);
 
             let next = &threads.threads[usize::from(next_pid)];
