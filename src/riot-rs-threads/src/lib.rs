@@ -159,7 +159,22 @@ impl Threads {
     ///
     /// Panics if `pid` is >= [`THREADS_NUMOF`].
     fn set_state(&mut self, pid: ThreadId, state: ThreadState) -> ThreadState {
-        core::mem::replace(&mut self.threads[usize::from(pid)].state, state)
+        let old_state = core::mem::replace(&mut self.threads[usize::from(pid)].state, state);
+        match (state, old_state) {
+            (new, old) if new == old => {}
+            (ThreadState::Running, _) => {
+                let prio = self.add_to_runqueue(pid);
+                sev();
+                if let Some(current_prio) = self.current_prio() {
+                    if prio > current_prio {
+                        schedule();
+                    }
+                }
+            }
+            (_, ThreadState::Running) => schedule(),
+            _ => {}
+        }
+        old_state
     }
 
     /// Returns the state of a thread.
@@ -171,9 +186,15 @@ impl Threads {
         }
     }
 
-    fn add_to_runqueue(&mut self, thread_id: ThreadId) {
+    fn add_to_runqueue(&mut self, thread_id: ThreadId) -> RunqueueId {
         let prio = self.get_unchecked(thread_id).prio;
         self.runqueue.add(thread_id, prio);
+        prio
+    }
+
+    fn current_prio(&self) -> Option<RunqueueId> {
+        let current_pid = self.current_pid()?;
+        Some(self.get_unchecked(current_pid).prio)
     }
 }
 
@@ -288,8 +309,6 @@ fn cleanup() -> ! {
         threads.set_state(thread_id, ThreadState::Invalid);
     });
 
-    schedule();
-
     unreachable!();
 }
 
@@ -311,14 +330,13 @@ pub fn sleep() {
         let pid = threads.current_pid().unwrap();
         threads.set_state(pid, ThreadState::Paused);
     });
-    schedule();
 }
 
 /// Wakes up a thread and adds it to the runqueue.
 ///
 /// Returns `false` if no paused thread exists for `thread_id`.
 pub fn wakeup(thread_id: ThreadId) -> bool {
-    if THREADS.with_mut(|mut threads| {
+    THREADS.with_mut(|mut threads| {
         if usize::from(thread_id) >= THREADS_NUMOF {
             return false;
         }
@@ -327,15 +345,8 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
             return false;
         }
         threads.set_state(thread_id, ThreadState::Running);
-        threads.add_to_runqueue(thread_id);
         true
-    }) {
-        sev();
-        schedule();
-        true
-    } else {
-        false
-    }
+    })
 }
 
 /// Returns the size of the internal structure that holds the
