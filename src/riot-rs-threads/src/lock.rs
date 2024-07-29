@@ -54,19 +54,15 @@ impl Lock {
     ///
     /// Panics if this is called outside of a thread context.
     pub fn acquire(&self) {
-        if critical_section::with(|cs| {
+        critical_section::with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => *state = LockState::Locked(ThreadList::new()),
                 LockState::Locked(waiters) => {
                     waiters.put_current(cs, ThreadState::LockBlocked);
-                    return true;
                 }
             }
-            false
-        }) {
-            crate::schedule();
-        }
+        })
     }
 
     /// Get the lock (non-blocking).
@@ -93,22 +89,17 @@ impl Lock {
     /// If the lock was locked and there were no waiters, the lock will be unlocked.
     /// If the lock was not locked, the function just returns.
     pub fn release(&self) {
-        if critical_section::with(|cs| {
+        critical_section::with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {}
                 LockState::Locked(waiters) => {
-                    if waiters.pop(cs).is_some() {
-                        return true;
+                    if waiters.pop(cs).is_none() {
+                        *state = LockState::Unlocked
                     }
-                    *state = LockState::Unlocked
                 }
             }
-            false
-        }) {
-            crate::sev();
-            crate::schedule();
-        }
+        })
     }
 }
 
