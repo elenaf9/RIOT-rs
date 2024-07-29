@@ -64,8 +64,6 @@ impl<T: Copy + Send> Channel<T> {
                 }
             }
         });
-        crate::sev();
-        crate::schedule();
     }
 
     pub fn try_send(&self, something: &T) -> bool {
@@ -126,8 +124,6 @@ impl<T: Copy + Send> Channel<T> {
                 }
             }
         });
-        crate::sev();
-        crate::schedule();
 
         // ensure the compiler honors what happened to memory while the thread
         // was scheduled away.
