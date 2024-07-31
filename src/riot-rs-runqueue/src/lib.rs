@@ -95,4 +95,25 @@ mod tests {
         runqueue.advance(RunqueueId::new(0));
         assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
     }
+
+    #[test]
+    fn test_rq_del() {
+        let mut runqueue: RunQueue<8, 32> = RunQueue::new();
+
+        runqueue.add(ThreadId::new(0), RunqueueId::new(1));
+        runqueue.add(ThreadId::new(1), RunqueueId::new(1));
+        runqueue.add(ThreadId::new(2), RunqueueId::new(0));
+
+        assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
+
+        // Delete thread that isn't head.
+        runqueue.del(ThreadId::new(1), RunqueueId::new(1));
+        assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
+
+        runqueue.del(ThreadId::new(0), RunqueueId::new(1));
+        assert_eq!(runqueue.get_next(), Some(ThreadId::new(2)));
+
+        runqueue.del(ThreadId::new(2), RunqueueId::new(0));
+        assert_eq!(runqueue.get_next(), None);
+    }
 }
