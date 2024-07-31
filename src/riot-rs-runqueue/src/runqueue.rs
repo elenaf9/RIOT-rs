@@ -1,7 +1,7 @@
 // Disable indexing lints for now
 #![allow(clippy::indexing_slicing)]
 
-use core::mem;
+use core::{mem, ops::Deref};
 
 use self::clist::CList;
 
@@ -21,6 +21,13 @@ impl RunqueueId {
 impl From<RunqueueId> for usize {
     fn from(value: RunqueueId) -> Self {
         usize::from(value.0)
+    }
+}
+
+impl Deref for RunqueueId {
+    type Target = u8;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -77,6 +84,11 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         debug_assert!(usize::from(rq) < N_QUEUES);
         self.bitcache |= 1 << rq.0;
         self.queues.push(n.0, rq.0);
+    }
+
+    /// Returns the head of the runqueue without removing it.
+    pub fn peek_head(&self, rq: RunqueueId) -> Option<ThreadId> {
+        self.queues.peek_head(rq.0).map(ThreadId)
     }
 
     /// Removes thread with pid `n` from runqueue number `rq`.
