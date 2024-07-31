@@ -98,6 +98,13 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         }
     }
 
+    /// Removes thread with pid `n`.
+    pub fn del(&mut self, n: ThreadId) {
+        if let Some(empty_runqueue) = self.queues.del(n.0) {
+            self.bitcache &= !(1 << empty_runqueue);
+        }
+    }
+
     fn ffs(val: usize) -> u32 {
         USIZE_BITS as u32 - val.leading_zeros()
     }
@@ -133,6 +140,7 @@ mod clist {
     //! array of size `N_THREADS`.
     //! The array is used for "next" pointers, so each integer value in the array
     //! corresponds to one element, which can only be in one of the lists.
+
     #[derive(Debug, Copy, Clone)]
     pub struct CList<const N_QUEUES: usize, const N_THREADS: usize> {
         tail: [u8; N_QUEUES],
@@ -174,6 +182,31 @@ mod clist {
                     self.tail[rq as usize] = n;
                 }
             }
+        }
+
+        /// Remove a thread from the list.
+        ///
+        /// If the thread was the only thread in its runqueue, `Some` is returned
+        /// with the ID of the now empty runqueue.
+        pub fn del(&mut self, n: u8) -> Option<u8> {
+            let mut empty_runqueue = None;
+
+            // Find previous thread in circular runqueue.
+            let prev = self.next_idxs.iter().position(|&next| next == n)?;
+
+            // Handle if thread is tail of a runqueue.
+            if let Some(rq) = self.tail.iter().position(|&tail| tail == n) {
+                if prev == n as usize {
+                    // Runqueue is empty now.
+                    self.tail[rq] = Self::sentinel();
+                    empty_runqueue = Some(rq as u8);
+                } else {
+                    self.tail[rq] = prev as u8;
+                }
+            }
+            self.next_idxs[prev] = self.next_idxs[n as usize];
+            self.next_idxs[n as usize] = Self::sentinel();
+            empty_runqueue
         }
 
         pub fn pop_head(&mut self, rq: u8) -> Option<u8> {
