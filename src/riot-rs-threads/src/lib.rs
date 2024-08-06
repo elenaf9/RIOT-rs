@@ -201,7 +201,11 @@ impl Threads {
         if thread.state != ThreadState::Running {
             return false;
         }
-        self.runqueue.del(thread_id, old_prio);
+        if self.runqueue.peek_head(old_prio) == Some(thread_id) {
+            self.runqueue.pop_head(thread_id, old_prio)
+        } else {
+            self.runqueue.del(thread_id)
+        }
         self.runqueue.add(thread_id, prio);
         true
     }
