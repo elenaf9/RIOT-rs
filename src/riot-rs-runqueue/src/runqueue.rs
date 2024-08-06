@@ -105,18 +105,10 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         }
     }
 
-    /// Removes thread with pid `n` from runqueue number `rq`.
-    ///
-    /// Warning: will cause undefined behavior if the thread is not in
-    /// this runqueue.
-    pub fn del(&mut self, n: ThreadId, rq: RunqueueId) {
-        if self.queues.peek_head(rq.0) == Some(n.0) {
-            self.queues.pop_head(rq.0);
-        } else if !self.queues.del(n.0, rq.0) {
-            return;
-        }
-        if self.queues.is_empty(rq.0) {
-            self.bitcache &= !(1 << rq.0);
+    /// Removes thread with pid `n`.
+    pub fn del(&mut self, n: ThreadId) {
+        if let Some(empty_runqueue) = self.queues.del(n.0) {
+            self.bitcache &= !(1 << empty_runqueue);
         }
     }
 
@@ -154,6 +146,7 @@ mod clist {
     //! array of size `N_THREADS`.
     //! The array is used for "next" pointers, so each integer value in the array
     //! corresponds to one element, which can only be in one of the lists.
+
     #[derive(Debug, Copy, Clone)]
     pub struct CList<const N_QUEUES: usize, const N_THREADS: usize> {
         tail: [u8; N_QUEUES],
@@ -197,34 +190,25 @@ mod clist {
             }
         }
 
-        pub fn del(&mut self, n: u8, rq: u8) -> bool {
-            let tail = self.tail[rq as usize];
-            if tail == Self::sentinel() {
-                // Runqueue is empty.
-                return false;
-            }
+        pub fn del(&mut self, n: u8) -> Option<u8> {
+            let mut empty_runqueue = None;
 
             // Find previous thread in circular runqueue.
-            let Some(prev) = self.next_idxs.iter().position(|&next| next == n) else {
-                // Thread is not in any runqueue.
-                return false;
-            };
+            let prev = self.next_idxs.iter().position(|&next| next == n)?;
 
-            if prev == n as usize {
-                // The thread was the only thread in the runqueue.
-                debug_assert_eq!(tail, n);
-                self.tail[rq as usize] = Self::sentinel();
-            } else {
-                // Update pointer of previous thread.
-                self.next_idxs[prev as usize] = self.next_idxs[n as usize];
+            // Handle if thread is tail of a runqueue.
+            if let Some(rq) = self.tail.iter().position(|&tail| tail == n) {
+                if prev == n as usize {
+                    // Runqueue is empty now.
+                    self.tail[rq] = Self::sentinel();
+                    empty_runqueue = Some(rq as u8)
+                } else {
+                    self.tail[rq] = prev as u8;
+                }
             }
-
-            if self.tail[rq as usize] == n {
-                self.tail[rq as usize] = prev as u8;
-            }
-
+            self.next_idxs[prev as usize] = self.next_idxs[n as usize];
             self.next_idxs[n as usize] = Self::sentinel();
-            return true;
+            return empty_runqueue;
         }
 
         pub fn pop_head(&mut self, rq: u8) -> Option<u8> {
