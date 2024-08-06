@@ -107,13 +107,19 @@ mod tests {
         assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
 
         // Delete thread that isn't head.
-        runqueue.del(ThreadId::new(1), RunqueueId::new(1));
+        runqueue.del(ThreadId::new(1));
         assert_eq!(runqueue.get_next(), Some(ThreadId::new(0)));
 
-        runqueue.del(ThreadId::new(0), RunqueueId::new(1));
+        // Delete head.
+        runqueue.del(ThreadId::new(0));
         assert_eq!(runqueue.get_next(), Some(ThreadId::new(2)));
 
-        runqueue.del(ThreadId::new(2), RunqueueId::new(0));
+        // Delete invalid thread.
+        runqueue.del(ThreadId::new(3));
+        assert_eq!(runqueue.get_next(), Some(ThreadId::new(2)));
+
+        // Delete last thread in runqueue.
+        runqueue.del(ThreadId::new(2));
         assert_eq!(runqueue.get_next(), None);
     }
 }
