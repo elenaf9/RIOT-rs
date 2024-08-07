@@ -268,6 +268,10 @@ pub fn is_valid_pid(thread_id: ThreadId) -> bool {
     THREADS.with(|threads| threads.is_valid_pid(thread_id))
 }
 
+pub fn is_running(thread_id: ThreadId) -> bool {
+    THREADS.with(|threads| threads.get_state(thread_id) == Some(ThreadState::Running))
+}
+
 /// Thread cleanup function.
 ///
 /// This gets hooked into a newly created thread stack so it gets called when
