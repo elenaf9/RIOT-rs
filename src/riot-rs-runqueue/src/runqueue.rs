@@ -194,6 +194,10 @@ mod clist {
             }
         }
 
+        /// Remove a thread from the list.
+        ///
+        /// If the thread was the only thread in its runqueue, `Some` is returned
+        /// with the ID of the now empty runqueue.
         pub fn del(&mut self, n: u8) -> Option<u8> {
             let mut empty_runqueue = None;
 
@@ -205,14 +209,14 @@ mod clist {
                 if prev == n as usize {
                     // Runqueue is empty now.
                     self.tail[rq] = Self::sentinel();
-                    empty_runqueue = Some(rq as u8)
+                    empty_runqueue = Some(rq as u8);
                 } else {
                     self.tail[rq] = prev as u8;
                 }
             }
-            self.next_idxs[prev as usize] = self.next_idxs[n as usize];
+            self.next_idxs[prev] = self.next_idxs[n as usize];
             self.next_idxs[n as usize] = Self::sentinel();
-            return empty_runqueue;
+            empty_runqueue
         }
 
         pub fn pop_head(&mut self, rq: u8) -> Option<u8> {
