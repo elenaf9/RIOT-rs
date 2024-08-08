@@ -63,6 +63,9 @@ impl Arch for Cpu {
 
     #[inline(always)]
     fn start_threading() {
+        unsafe {
+            cortex_m::register::psp::write(0);
+        }
         Self::schedule();
     }
 }
@@ -84,9 +87,10 @@ unsafe extern "C" fn PendSV() {
              * so let's use '99' forward ('99f')
              */
             beq 99f
-            stmia r1, {{r4-r11}}
-            ldmia r2, {{r4-r11}}
-            msr.n psp, r0
+
+            stmfd r0, {{r4-r11}}
+            ldmea r1, {{r4-r11}}
+
             99:
             movw LR, #0xFFFd
             movt LR, #0xFFFF
@@ -110,31 +114,32 @@ unsafe extern "C" fn PendSV() {
             cmp r0, #0
             beq 99f
 
-            //stmia r1!, {{r4-r7}}
-            str r4, [r1, #16]
-            str r5, [r1, #20]
-            str r6, [r1, #24]
-            str r7, [r1, #28]
+            // The ldm section that restores the registers expects the stack:
+            // | r8 - r11 | <- r0
+            // | r4 - r7  |
+            // |   ...    |
+            // On ARMv6 without thumb instructions, `stmfd` is not supported,
+            // and only registers r1-r7 can be pushed.
+            // stmia is pushing in ascending manner.
+            // So we first need to subtract the space for the 8 stored registers,
+            // and then push the registers in the correct order.
+            subs r0, 32
+            mov r2,  r8
+            mov r3,  r9
+            stmia r0!, {{r2-r3}}
+            mov r2,  r10
+            mov r3,  r11
+            stmia r0!, {{r2-r3}}
+            stmia r0!, {{r4-r7}}
 
-            mov  r4, r8
-            mov  r5, r9
-            mov  r6, r10
-            mov  r7, r11
-
-            str r4, [r1, #0]
-            str r5, [r1, #4]
-            str r6, [r1, #8]
-            str r7, [r1, #12]
-
-            //
-            ldmia r2!, {{r4-r7}}
+            subs r1, 32
+            ldm r1!, {{r4-r7}}
             mov r11, r7
             mov r10, r6
             mov r9,  r5
             mov r8,  r4
-            ldmia r2!, {{r4-r7}}
+            ldm r1!, {{r4-r7}}
 
-            msr.n psp, r0
             99:
             ldr r0, 999f
             mov LR, r0
@@ -164,7 +169,7 @@ unsafe extern "C" fn PendSV() {
 /// This function is called in PendSV.
 // TODO: make arch independent, or move to arch
 #[no_mangle]
-unsafe fn sched() -> u128 {
+unsafe fn sched() -> u64 {
     loop {
         if let Some(res) = critical_section::with(|cs| {
             let threads = unsafe { &mut *THREADS.as_ptr(cs) };
@@ -178,35 +183,28 @@ unsafe fn sched() -> u128 {
                 }
             };
 
-            let current_high_regs;
+            let current_sp = cortex_m::register::psp::read();
+
             if let Some(current_pid) = threads.current_pid() {
                 if next_pid == current_pid {
                     return Some(0);
                 }
 
-                threads.threads[usize::from(current_pid)].sp =
-                    cortex_m::register::psp::read() as usize;
-                threads.current_thread = Some(next_pid);
+                threads.threads[usize::from(current_pid)].sp = current_sp as usize;
+            }
 
-                current_high_regs = threads.threads[usize::from(current_pid)].data.as_ptr();
-            } else {
-                threads.current_thread = Some(next_pid);
-                current_high_regs = core::ptr::null();
-            };
+            threads.current_thread = Some(next_pid);
+            let next_sp = threads.threads[usize::from(next_pid)].sp;
+            unsafe {
+                cortex_m::register::psp::write(next_sp as u32);
+            }
 
-            let next = &threads.threads[usize::from(next_pid)];
-            let next_sp = next.sp as usize;
-            let next_high_regs = next.data.as_ptr() as usize;
-
-            // PendSV expects these three pointers in r0, r1 and r2:
-            // r0 = &next.sp
-            // r1 = &current.high_regs
-            // r2 = &next.high_regs
-            // On Cortex-M, a u128 as return value is passed in registers r0-r3.
+            // PendSV expects these two pointers in r0 and r1:
+            // r0 = &current.sp
+            // r1 = &next.sp
+            // On Cortex-M, a u64 as return value is passed in registers r0-r1.
             // So let's use that.
-            let res: u128 =
-                //  (r0)                     (r1)                        (r2)
-                (next_sp as u128) |  ((current_high_regs as u128) << 32) | ((next_high_regs as u128) << 64);
+            let res = (current_sp as u64) | ((next_sp as u64) << 32);
             Some(res)
         }) {
             break res;
