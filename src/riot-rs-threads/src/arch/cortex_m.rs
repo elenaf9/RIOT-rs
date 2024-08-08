@@ -90,25 +90,15 @@ unsafe extern "C" fn PendSV() {
             mrs.n r0, psp
             
             cmp r0, #0
-            beq 95f
+            it ne
+            stmfdne r0!, {{r4-r11}}
 
-            stmfd r0!, {{r4-r11}}
-            msr.n psp, r0
-
-            95:
             bl {sched}
 
             cmp r0, #0
-            beq 98f
+            beq 99f
 
             ldmfd r0!, {{r4-r11}}
-            msr.n psp, r0
-            b 99f
-
-
-            98:
-            mrs.n r0, psp
-            adds r0, 32
             msr.n psp, r0
 
             99:
@@ -136,35 +126,30 @@ unsafe extern "C" fn PendSV() {
             beq 95f
 
             mrs.n r0, psp
-            subs r0, r0, 32
-            msr.n psp, r0
 
-            stmea r0!, {{r4-r7}}
+            // stm is pushing in ascending manner, but our stack is descending.
+            // So we first need to subtract the space for the 8 stored registers.
+            subs r0, r0, 32
+            stm r0!, {{r4-r7}}
             mov r8,  r4
             mov r9,  r5
             mov r10, r6
             mov r11, r7
-            stmea r0!, {{r4-r7}}
+            stm r0!, {{r4-r7}}
 
             95:
             bl sched
 
             cmp r0, #0
-            beq 98f
+            beq 99f
 
-            ldmfd r0!, {{r4-r7}}
+            ldm r0!, {{r4-r7}}
             mov r8,  r4
             mov r9,  r5
             mov r10, r6
             mov r11, r7
-            ldmfd r0!, {{r4-r7}}
+            ldm r0!, {{r4-r7}}
 
-            msr.n psp, r0
-            b 99f
-
-            98:
-            mrs.n r0, psp
-            adds r0, 32
             msr.n psp, r0
 
             99:
@@ -191,18 +176,13 @@ unsafe extern "C" fn PendSV() {
 ///
 /// This function is called in PendSV.
 #[no_mangle]
-unsafe fn sched() -> usize {
+unsafe fn sched(old_sp: u32) -> u32 {
     THREADS.with_mut(|mut threads| {
         if let Some(current_pid) = threads.current_pid() {
-            let &mut Thread {
-                pid,
-                state,
-                prio,
-                ref mut sp,
-                ..
-            } = threads.get_unchecked_mut(current_pid);
-            *sp = cortex_m::register::psp::read() as usize;
-            if state == ThreadState::Running {
+            let thread = threads.get_unchecked_mut(current_pid);
+            thread.sp = old_sp as usize;
+            if thread.state == ThreadState::Running {
+                let &mut Thread { pid, prio, .. } = thread;
                 threads.runqueue.add(pid, prio);
             }
         }
@@ -215,9 +195,8 @@ unsafe fn sched() -> usize {
             }
             *threads.current_pid_mut() = Some(next_pid);
 
-            let next = &threads.threads[usize::from(next_pid)];
-            let next_sp = next.sp as usize;
-            Some(next_sp)
+            let next_sp = threads.threads[usize::from(next_pid)].sp;
+            Some(next_sp as u32)
         }) {
             break res;
         }
