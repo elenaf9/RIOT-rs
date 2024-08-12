@@ -112,7 +112,6 @@ impl Threads {
             Cpu::setup_stack(thread, stack, func, arg);
             thread.prio = prio;
             thread.pid = pid;
-            thread.state = ThreadState::Paused;
 
             Some(thread)
         } else {
@@ -163,6 +162,13 @@ impl Threads {
         let old_state = core::mem::replace(&mut self.threads[usize::from(pid)].state, state);
         match (state, old_state) {
             (new, old) if new == old => {}
+            (ThreadState::Running, ThreadState::Invalid) => {
+                self.add_to_runqueue(pid);
+                // We are in the startup phase were all threads are created.
+                // Don't trigger the scheduler before `start_threading`.
+                // FIXME: threads aren't only created during startup, so
+                // we need to find another fix for thos.
+            }
             (ThreadState::Running, _) => {
                 let prio = self.add_to_runqueue(pid);
                 sev();
