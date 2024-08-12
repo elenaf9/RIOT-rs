@@ -35,7 +35,7 @@ pub use arch::schedule;
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::RunQueue;
-use smp::{sev, Multicore};
+use smp::{schedule_on_core, Multicore};
 use thread::{Thread, ThreadState};
 
 /// a global defining the number of possible priority levels
@@ -63,7 +63,7 @@ struct Threads {
     /// resource access.
     thread_blocklist: [Option<ThreadId>; THREADS_NUMOF],
     /// The currently running thread.
-    current_threads: [Option<ThreadId>; CORES_NUMOF],
+    current_threads: [Option<(ThreadId, RunqueueId)>; CORES_NUMOF],
 }
 
 impl Threads {
@@ -85,15 +85,16 @@ impl Threads {
     ///
     /// Returns `None` if there is no current thread.
     fn current(&mut self) -> Option<&mut Thread> {
-        self.current_threads[usize::from(core_id())].map(|tid| &mut self.threads[usize::from(tid)])
+        self.current_threads[usize::from(core_id())]
+            .map(|(pid, _)| &mut self.threads[usize::from(pid)])
     }
 
     fn current_pid(&self) -> Option<ThreadId> {
-        self.current_threads[usize::from(core_id())]
+        self.current_threads[usize::from(core_id())].map(|(id, _)| id)
     }
 
-    fn current_pid_mut(&mut self) -> &mut Option<ThreadId> {
-        &mut self.current_threads[usize::from(core_id())]
+    fn set_current(&mut self, pid: ThreadId, prio: RunqueueId) {
+        self.current_threads[usize::from(core_id())] = Some((pid, prio))
     }
 
     /// Creates a new thread.
@@ -112,7 +113,6 @@ impl Threads {
             Cpu::setup_stack(thread, stack, func, arg);
             thread.prio = prio;
             thread.pid = pid;
-
             Some(thread)
         } else {
             None
@@ -171,11 +171,9 @@ impl Threads {
             }
             (ThreadState::Running, _) => {
                 let prio = self.add_to_runqueue(pid);
-                sev();
-                if let Some(current_prio) = self.current_prio() {
-                    if prio > current_prio {
-                        schedule();
-                    }
+                let (core, lowest_prio) = self.lowest_running_prio();
+                if lowest_prio <= prio {
+                    schedule_on_core(core);
                 }
             }
             (_, ThreadState::Running) => schedule(),
@@ -202,6 +200,18 @@ impl Threads {
     fn current_prio(&self) -> Option<RunqueueId> {
         let current_pid = self.current_pid()?;
         Some(self.get_unchecked(current_pid).prio)
+    }
+
+    fn lowest_running_prio(&self) -> (CoreId, RunqueueId) {
+        self.current_threads
+            .iter()
+            .enumerate()
+            .map(|(core, thread)| {
+                let rq = thread.map_or_else(|| RunqueueId::new(0), |(_, rq)| rq);
+                (CoreId::new(core as u8), rq)
+            })
+            .min_by_key(|(_, rq)| *rq)
+            .unwrap()
     }
 }
 

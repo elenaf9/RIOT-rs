@@ -23,8 +23,6 @@ pub trait Multicore {
 
     fn wait_for_wakeup();
 
-    fn sev();
-
     fn schedule_on_core(id: CoreId);
 }
 
@@ -50,15 +48,9 @@ cfg_if::cfg_if! {
                 Cpu::wfi();
             }
 
-            fn sev() {}
-
             fn schedule_on_core(_id: CoreId) {}
         }
     }
-}
-
-pub fn sev() {
-    Chip::sev()
 }
 
 pub fn schedule_on_core(id: CoreId) {

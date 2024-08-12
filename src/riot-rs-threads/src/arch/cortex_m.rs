@@ -1,6 +1,9 @@
 use core::arch::asm;
 use core::ptr::write_volatile;
-use cortex_m::peripheral::{scb::SystemHandler, SCB};
+use cortex_m::peripheral::{
+    scb::{Exception, SystemHandler},
+    SCB,
+};
 
 use crate::{cleanup, smp::Multicore, Arch, Thread, ThreadState, THREADS};
 
@@ -192,8 +195,8 @@ unsafe fn sched(old_sp: u32) -> u32 {
             let thread = threads.get_unchecked_mut(current_pid);
             thread.sp = old_sp as usize;
             if thread.state == ThreadState::Running {
-                let &mut Thread { pid, prio, .. } = thread;
-                threads.runqueue.add(pid, prio);
+                let prio = thread.prio;
+                threads.runqueue.add(current_pid, prio);
             }
         }
     });
@@ -203,10 +206,10 @@ unsafe fn sched(old_sp: u32) -> u32 {
             if Some(next_pid) == threads.current_pid() {
                 return Some(0);
             }
-            *threads.current_pid_mut() = Some(next_pid);
+            let &Thread { prio, sp, .. } = threads.get_unchecked(next_pid);
+            threads.set_current(next_pid, prio);
 
-            let next_sp = threads.threads[usize::from(next_pid)].sp;
-            Some(next_sp as u32)
+            Some(sp as u32)
         }) {
             break res;
         }

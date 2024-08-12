@@ -130,8 +130,8 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         }
         let rq = (rq_ffs - 1) as u8;
         let head = match self.queues.pop_head(rq) {
-            Some(id) => Some(ThreadId::new(id)),
-            None => None,
+            Some(id) => Some(ThreadId(id)),
+            None => return None,
         };
         if self.queues.is_empty(rq) {
             self.bitcache &= !(1 << rq);
