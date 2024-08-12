@@ -1327,7 +1327,7 @@ dependencies = [
 [[package]]
 name = "embassy-rp"
 version = "0.2.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#afdd20dc1f721a3be5704b2bb5f8572f0a3f8ca3"
+source = "git+https://github.com/elenaf9/embassy?branch=for-riot-rs-multicore-20240910#6b404e0cada63979883ea33ddfd4cf5bd6549a6a"
 dependencies = [
  "atomic-polyfill",
  "cfg-if",

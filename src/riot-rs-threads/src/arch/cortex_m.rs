@@ -69,14 +69,6 @@ impl Arch for Cpu {
         }
         Self::schedule();
     }
-
-    fn wfi() {
-        // see https://cliffle.com/blog/stm32-wfi-bug/
-        #[cfg(context = "stm32")]
-        cortex_m::asm::isb();
-
-        cortex_m::asm::wfi();
-    }
 }
 
 #[cfg(any(armv7m, armv8m))]
@@ -235,6 +227,10 @@ unsafe fn sched() -> u128 {
         }) {
             break res;
         }
-        crate::smp::Chip::wait_for_wakeup();
+        // see https://cliffle.com/blog/stm32-wfi-bug/
+        #[cfg(context = "stm32")]
+        cortex_m::asm::isb();
+
+        cortex_m::asm::wfi();
     }
 }

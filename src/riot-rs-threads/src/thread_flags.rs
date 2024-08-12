@@ -104,8 +104,8 @@ impl Threads {
             ThreadState::FlagBlocked(WaitMode::All(bits)) if thread.flags & bits == bits => {}
             _ => return,
         };
-        if let (_, Some(_core_id)) = self.set_state(thread_id, ThreadState::Running) {
-            crate::schedule();
+        if let (_, Some(core_id)) = self.set_state(thread_id, ThreadState::Running) {
+            crate::schedule_on_core(core_id);
         }
     }
 
