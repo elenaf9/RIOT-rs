@@ -38,9 +38,8 @@ impl ThreadList {
                 self.head = threads.thread_blocklist[usize::from(head)].take();
                 threads.set_state(head, ThreadState::Running)
             });
-            if let Some(_core_id) = core_id {
-                crate::sev();
-                crate::schedule();
+            if let Some(core_id) = core_id {
+                crate::schedule_on_core(core_id);
             }
             Some((head, old_state))
         } else {

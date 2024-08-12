@@ -35,7 +35,7 @@ pub use arch::schedule;
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::{GlobalRunqueue, RunQueue};
-use smp::{sev, Multicore};
+use smp::{schedule_on_core, Multicore};
 use thread::{Thread, ThreadState};
 
 /// a global defining the number of possible priority levels
@@ -305,13 +305,14 @@ fn cleanup() -> ! {
 
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
-    THREADS.with_mut(|mut threads| {
+    if THREADS.with_mut(|mut threads| {
         let thread = threads.current().unwrap();
         let runqueue = thread.prio;
         let pid = thread.pid;
-        threads.runqueue.advance(pid, runqueue);
-    });
-    schedule();
+        threads.runqueue.advance(pid, runqueue).is_some()
+    }) {
+        schedule();
+    }
 }
 
 /// Suspends/ pauses the current thread's execution.
@@ -330,9 +331,8 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
     THREADS.with_mut(|mut threads| {
         if let Some(state) = threads.get_state(thread_id) {
             if state == ThreadState::Paused {
-                if let Some(_core_id) = threads.set_state(thread_id, ThreadState::Running).1 {
-                    schedule();
-                    sev();
+                if let Some(core_id) = threads.set_state(thread_id, ThreadState::Running).1 {
+                    schedule_on_core(core_id);
                 }
                 true
             } else {

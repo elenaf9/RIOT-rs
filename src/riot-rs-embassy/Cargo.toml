@@ -78,11 +78,11 @@ embassy-nrf = { workspace = true, features = ["nrf5340-app-s"] }
 [target.'cfg(context = "rp2040")'.dependencies]
 embassy-rp = { workspace = true, features = [
   "rp2040",
-  "rt",
   "time-driver",
   "unstable-pac",
   #  "unstable-traits",
 ] }
+rp-pac = { workspace = true, features = ["rt"] }
 
 [target.'cfg(context = "esp")'.dependencies]
 esp-hal = { workspace = true, features = ["async", "embedded-hal"] }

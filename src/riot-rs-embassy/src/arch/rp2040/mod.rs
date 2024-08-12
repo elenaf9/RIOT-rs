@@ -12,7 +12,7 @@ pub use embassy_rp::{peripherals, OptionalPeripherals};
 #[cfg(feature = "executor-interrupt")]
 pub(crate) use embassy_executor::InterruptExecutor as Executor;
 #[cfg(feature = "executor-interrupt")]
-pub use embassy_rp::interrupt;
+pub use rp_pac::interrupt;
 
 #[cfg(feature = "executor-interrupt")]
 crate::executor_swi!(SWI_IRQ_1);
