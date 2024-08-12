@@ -21,9 +21,8 @@ pub enum WaitMode {
 ///
 /// Panics if `thread_id` is >= [`THREADS_NUMOF`](crate::THREADS_NUMOF).
 pub fn set(thread_id: ThreadId, mask: ThreadFlags) {
-    if let Some(_core_id) = THREADS.with_mut(|mut threads| threads.flag_set(thread_id, mask)) {
-        crate::sev();
-        crate::schedule();
+    if let Some(core_id) = THREADS.with_mut(|mut threads| threads.flag_set(thread_id, mask)) {
+        crate::schedule_on_core(core_id);
     }
 }
 
