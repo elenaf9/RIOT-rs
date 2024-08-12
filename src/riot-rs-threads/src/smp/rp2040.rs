@@ -1,6 +1,6 @@
 use crate::arch::{Arch, Cpu};
 
-use super::Multicore;
+use super::{CoreId, Multicore};
 use embassy_rp::{
     multicore::{spawn_core1, Stack},
     peripherals::CORE1,
@@ -12,8 +12,8 @@ pub struct Chip;
 impl Multicore for Chip {
     const CORES: u32 = 2;
 
-    fn core_id() -> u32 {
-        SIO.cpuid().read()
+    fn core_id() -> CoreId {
+        CoreId(SIO.cpuid().read() as u8)
     }
 
     fn startup_cores() {

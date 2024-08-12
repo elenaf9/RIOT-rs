@@ -26,6 +26,7 @@ pub mod macro_reexports {
 }
 
 pub use riot_rs_runqueue::{RunqueueId, ThreadId};
+pub use smp::CoreId;
 pub use thread_flags as flags;
 
 #[doc(hidden)]
@@ -84,15 +85,15 @@ impl Threads {
     ///
     /// Returns `None` if there is no current thread.
     fn current(&mut self) -> Option<&mut Thread> {
-        self.current_threads[core_id()].map(|tid| &mut self.threads[usize::from(tid)])
+        self.current_threads[usize::from(core_id())].map(|tid| &mut self.threads[usize::from(tid)])
     }
 
     fn current_pid(&self) -> Option<ThreadId> {
-        self.current_threads[core_id()]
+        self.current_threads[usize::from(core_id())]
     }
 
     fn current_pid_mut(&mut self) -> &mut Option<ThreadId> {
-        &mut self.current_threads[core_id()]
+        &mut self.current_threads[usize::from(core_id())]
     }
 
     /// Creates a new thread.
@@ -289,8 +290,8 @@ pub fn current_pid() -> Option<ThreadId> {
 }
 
 /// Returns the id of the CPU that this thread is running on.
-pub fn core_id() -> usize {
-    smp::Chip::core_id() as usize
+pub fn core_id() -> CoreId {
+    smp::Chip::core_id()
 }
 
 /// Checks if a given [`ThreadId`] is valid
