@@ -22,4 +22,5 @@ subdirs:
   - threading
   - threading-channel
   - threading-dynamic-prios
+  - threading-lock
   - usb-serial
