@@ -1,7 +1,7 @@
 //! This module provides a Lock implementation.
 use core::cell::UnsafeCell;
 
-use crate::{threadlist::ThreadList, ThreadId, ThreadState};
+use crate::{threadlist::ThreadList, RunqueueId, Thread, ThreadId, ThreadState, THREADS};
 
 /// A basic locking object.
 ///
@@ -16,8 +16,9 @@ unsafe impl Sync for Lock {}
 enum LockState {
     Unlocked,
     Locked {
+        // The current owner of the lock and their normal priority.
+        owner: (ThreadId, RunqueueId),
         waiters: ThreadList,
-        owner: ThreadId,
     },
 }
 
@@ -54,18 +55,27 @@ impl Lock {
     ///
     /// **NOTE**: must not be called outside thread context!
     pub fn acquire(&self) {
-        crate::cs_with(|cs| {
+        THREADS.with_mut(|mut threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {
-                    let pid = crate::current_pid().unwrap();
+                    let Thread { pid, prio, .. } = threads.current().unwrap();
                     *state = LockState::Locked {
                         waiters: ThreadList::new(),
-                        owner: pid,
+                        owner: (*pid, *prio),
                     }
                 }
-                LockState::Locked { waiters, .. } => {
-                    waiters.put_current(cs, ThreadState::LockBlocked);
+                LockState::Locked {
+                    waiters,
+                    owner: (owner_id, owner_prio),
+                } => {
+                    if let Some(inherit_priority) =
+                        waiters.put_current(&mut threads, ThreadState::LockBlocked)
+                    {
+                        if &inherit_priority > owner_prio {
+                            threads.set_priority(*owner_id, inherit_priority);
+                        }
+                    }
                 }
             }
         })
@@ -77,18 +87,21 @@ impl Lock {
     /// If the lock was locked by another thread, the function returns false.
     /// If the lock is already locked by the current thread, the function returns true.
     pub fn try_acquire(&self) -> bool {
-        crate::cs_with(|_| {
-            let pid = crate::current_pid().unwrap();
+        THREADS.with_mut(|mut threads| {
+            let Thread { pid, prio, .. } = threads.current().unwrap();
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {
                     *state = LockState::Locked {
                         waiters: ThreadList::new(),
-                        owner: pid,
+                        owner: (*pid, *prio),
                     };
                     true
                 }
-                LockState::Locked { owner, .. } => *owner == pid,
+                LockState::Locked {
+                    owner: (owner_pid, _),
+                    ..
+                } => owner_pid == pid,
             }
         })
     }
@@ -100,13 +113,21 @@ impl Lock {
     /// If the lock was locked and there were no waiters, the lock will be unlocked.
     /// If the lock was not locked, the function just returns.
     pub fn release(&self) {
-        crate::cs_with(|cs| {
+        THREADS.with_mut(|mut threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {}
-                LockState::Locked { waiters, owner } => {
-                    if let Some((pid, _)) = waiters.pop(cs) {
-                        *owner = pid
+                LockState::Locked {
+                    waiters,
+                    owner: (owner_pid, owner_prio),
+                } => {
+                    if threads.current_pid().unwrap() != *owner_pid {
+                        return;
+                    }
+                    threads.set_priority(*owner_pid, *owner_prio);
+                    if let Some((pid, _)) = waiters.pop(&mut threads) {
+                        *owner_pid = pid;
+                        *owner_prio = threads.get_priority(pid).unwrap();
                     } else {
                         *state = LockState::Unlocked
                     }
