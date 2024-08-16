@@ -1,8 +1,7 @@
 //! This module provides a Lock implementation.
 use core::cell::UnsafeCell;
 
-use super::threadlist::ThreadList;
-use super::ThreadState;
+use crate::{threadlist::ThreadList, ThreadId, ThreadState};
 
 /// A basic locking object.
 ///
@@ -16,7 +15,10 @@ unsafe impl Sync for Lock {}
 
 enum LockState {
     Unlocked,
-    Locked(ThreadList),
+    Locked {
+        waiters: ThreadList,
+        owner: ThreadId,
+    },
 }
 
 impl Lock {
@@ -27,12 +29,12 @@ impl Lock {
         }
     }
 
-    /// Creates new **locked** Lock
-    pub const fn new_locked() -> Self {
-        Self {
-            state: UnsafeCell::new(LockState::Locked(ThreadList::new())),
-        }
-    }
+    // /// Creates new **locked** Lock
+    // pub const fn new_locked() -> Self {
+    //     Self {
+    //         state: UnsafeCell::new(LockState::Locked(ThreadList::new())),
+    //     }
+    // }
 
     /// Returns the current lock state
     ///
@@ -55,8 +57,14 @@ impl Lock {
         critical_section::with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
-                LockState::Unlocked => *state = LockState::Locked(ThreadList::new()),
-                LockState::Locked(waiters) => {
+                LockState::Unlocked => {
+                    let pid = crate::current_pid().unwrap();
+                    *state = LockState::Locked {
+                        waiters: ThreadList::new(),
+                        owner: pid,
+                    }
+                }
+                LockState::Locked { waiters, .. } => {
                     waiters.put_current(cs, ThreadState::LockBlocked);
                 }
             }
@@ -66,16 +74,21 @@ impl Lock {
     /// Get the lock (non-blocking)
     ///
     /// If the lock was unlocked, it will be locked and the function returns true.
-    /// If the lock was locked, the function returns false
+    /// If the lock was locked by another thread, the function returns false.
+    /// If the lock is already locked by the current thread, the function returns true.
     pub fn try_acquire(&self) -> bool {
         critical_section::with(|_| {
+            let pid = crate::current_pid().unwrap();
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {
-                    *state = LockState::Locked(ThreadList::new());
+                    *state = LockState::Locked {
+                        waiters: ThreadList::new(),
+                        owner: pid,
+                    };
                     true
                 }
-                LockState::Locked(_) => false,
+                LockState::Locked { owner, .. } => *owner == pid,
             }
         })
     }
@@ -91,8 +104,10 @@ impl Lock {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {}
-                LockState::Locked(waiters) => {
-                    if waiters.pop(cs).is_none() {
+                LockState::Locked { waiters, owner } => {
+                    if let Some((pid, _)) = waiters.pop(cs) {
+                        *owner = pid
+                    } else {
                         *state = LockState::Unlocked
                     }
                 }
