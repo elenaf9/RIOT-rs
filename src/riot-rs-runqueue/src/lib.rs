@@ -2,6 +2,7 @@
 #![feature(lint_reasons)]
 #![feature(min_specialization)]
 
+mod clist;
 mod runqueue;
 pub use runqueue::{CoreId, GlobalRunqueue, RunQueue, RunqueueId, ThreadId};
 
