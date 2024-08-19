@@ -47,37 +47,22 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> CList<N_QUEUES, N_THREADS> {
 
     /// Delete a thread from the runqueue.
     pub fn del(&mut self, n: u8, rq: u8) {
-        if self.next_idxs[n as usize] == Self::sentinel() {
-            // Thread is not in rq, do nothing.
+
+        // Find previous thread in circular runqueue.
+        let Some(prev) = self.next_idxs.iter().position(|&next| next == n) else {
             return;
+        };
+
+        // Handle if thread is tail of a runqueue.
+        if self.tail[rq as usize] == n {
+            self.tail[rq as usize] = if prev == n as usize {
+                // Runqueue is empty now.
+                Self::sentinel()
+            } else {
+                prev as u8
+            };
         }
-
-        if self.next_idxs[n as usize] == n {
-            // `n` should always be the tail in this case, but better be
-            // safe and double-check.
-            if self.tail[rq as usize] == n {
-                // `n` bites itself, so there's only one entry.
-                // Clear tail.
-                self.tail[rq as usize] = Self::sentinel();
-            }
-        } else {
-            let next = self.next_idxs[n as usize];
-
-            // Find previous in list and update its next-idx.
-            let prev = self
-                .next_idxs
-                .iter()
-                .position(|next_idx| *next_idx == n)
-                .expect("List is circular.");
-            self.next_idxs[prev] = next as u8;
-
-            // Update tail if the thread was the tail.
-            if self.tail[rq as usize] == n {
-                self.tail[rq as usize] = prev as u8;
-            }
-        }
-
-        // Clear thread's value.
+        self.next_idxs[prev] = self.next_idxs[n as usize];
         self.next_idxs[n as usize] = Self::sentinel();
     }
 
