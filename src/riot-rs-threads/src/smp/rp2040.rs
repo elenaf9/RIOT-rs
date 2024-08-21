@@ -5,10 +5,11 @@ use crate::{
 
 use super::Multicore;
 use embassy_rp::{
+    interrupt,
     multicore::{spawn_core1, Stack},
     peripherals::CORE1,
 };
-use rp_pac::{interrupt, SIO};
+use rp_pac::SIO;
 
 pub struct Chip;
 

@@ -47,7 +47,6 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> CList<N_QUEUES, N_THREADS> {
 
     /// Delete a thread from the runqueue.
     pub fn del(&mut self, n: u8, rq: u8) {
-
         // Find previous thread in circular runqueue.
         let Some(prev) = self.next_idxs.iter().position(|&next| next == n) else {
             return;
