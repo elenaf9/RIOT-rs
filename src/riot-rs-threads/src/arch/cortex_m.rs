@@ -36,10 +36,10 @@ impl Arch for Cpu {
 
         // 1. The stack starts at the highest address and grows downwards.
         // 2. A full stored context also contains R4-R11 and the stack pointer,
-        //    thus an additional 60 bytes need to be reserved.
+        //    thus an additional 64 bytes need to be reserved.
         // 3. Cortex-M expects the SP to be 8 byte aligned, so we chop the lowest
         //    7 bits by doing `& 0xFFFFFFF8`.
-        let stack_pos = ((stack_start + stack.len() - 60) & 0xFFFFFFF8) as *mut usize;
+        let stack_pos = ((stack_start + stack.len() - 64) & 0xFFFFFFF8) as *mut usize;
 
         unsafe {
             write_volatile(stack_pos.offset(8), arg); // -> R0
