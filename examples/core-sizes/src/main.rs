@@ -8,8 +8,8 @@ use riot_rs::debug::{exit, log::*, EXIT_SUCCESS};
 #[riot_rs::thread(autostart)]
 fn main() {
     info!(
-        "riot_rs::thread::lock::Lock: {}",
-        core::mem::size_of::<riot_rs::thread::lock::Lock>(),
+        "riot_rs::thread::semaphore::Semaphore: {}",
+        core::mem::size_of::<riot_rs::thread::semaphore::Semaphore>(),
     );
     info!(
         "riot_rs::thread::Thread: {}",

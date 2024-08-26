@@ -1,33 +1,33 @@
-//! This module provides a Lock implementation.
+//! This module provides a Semaphore implementation.
 use core::cell::UnsafeCell;
 
 use super::threadlist::ThreadList;
 use super::ThreadState;
 
-/// A basic locking object.
+/// A basic binary semaphore.
 ///
-/// A `Lock` behaves like a Mutex, but carries no data.
+/// A `Semaphore` behaves like a Mutex, but carries no data.
 /// This is supposed to be used to implement other locking primitives.
-pub struct Lock {
+pub struct Semaphore<const N: usize> {
     state: UnsafeCell<LockState>,
 }
 
-unsafe impl Sync for Lock {}
+unsafe impl<const N: usize> Sync for Semaphore<N> {}
 
 enum LockState {
-    Unlocked,
+    Unlocked(usize),
     Locked(ThreadList),
 }
 
-impl Lock {
-    /// Creates new **unlocked** Lock
+impl<const N: usize> Semaphore<N> {
+    /// Creates new **unlocked** Semaphore
     pub const fn new() -> Self {
         Self {
-            state: UnsafeCell::new(LockState::Unlocked),
+            state: UnsafeCell::new(LockState::Unlocked(N)),
         }
     }
 
-    /// Creates new **locked** Lock
+    /// Creates new **locked** Semaphore
     pub const fn new_locked() -> Self {
         Self {
             state: UnsafeCell::new(LockState::Locked(ThreadList::new())),
@@ -40,22 +40,23 @@ impl Lock {
     pub fn is_locked(&self) -> bool {
         critical_section::with(|_| {
             let state = unsafe { &*self.state.get() };
-            !matches!(state, LockState::Unlocked)
+            !matches!(state, LockState::Unlocked(_))
         })
     }
 
-    /// Get this lock (blocking)
+    /// Get this semaphore (blocking)
     ///
-    /// If the lock was unlocked, it will be locked and the function returns.
-    /// If the lock was locked, this function will block the current thread until the lock gets
-    /// unlocked elsewhere.
+    /// If the semaphore was unlocked, it will be locked and the function returns.
+    /// If the semaphore was locked, this function will unschedule the current thread until the
+    /// semaphore gets unlocked elsewhere.
     ///
     /// **NOTE**: must not be called outside thread context!
     pub fn acquire(&self) {
         critical_section::with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
-                LockState::Unlocked => *state = LockState::Locked(ThreadList::new()),
+                LockState::Unlocked(1) => *state = LockState::Locked(ThreadList::new()),
+                LockState::Unlocked(counter) => *counter -= 1,
                 LockState::Locked(waiters) => {
                     waiters.put_current(cs, ThreadState::LockBlocked);
                 }
@@ -63,16 +64,20 @@ impl Lock {
         })
     }
 
-    /// Get the lock (non-blocking)
+    /// Get the semaphore (non-blocking)
     ///
-    /// If the lock was unlocked, it will be locked and the function returns true.
-    /// If the lock was locked, the function returns false
+    /// If the semaphore was unlocked, it will be locked and the function returns true.
+    /// If the semaphore was locked, the function returns false
     pub fn try_acquire(&self) -> bool {
         critical_section::with(|_| {
             let state = unsafe { &mut *self.state.get() };
             match state {
-                LockState::Unlocked => {
+                LockState::Unlocked(1) => {
                     *state = LockState::Locked(ThreadList::new());
+                    true
+                }
+                LockState::Unlocked(counter) => {
+                    *counter -= 1;
                     true
                 }
                 LockState::Locked(_) => false,
@@ -80,20 +85,20 @@ impl Lock {
         })
     }
 
-    /// Releases the lock.
+    /// Releases the semaphore.
     ///
-    /// If the lock was locked, and there were waiters, the first waiter will be
+    /// If the semaphore was locked, and there were waiters, the first waiter will be
     /// woken up.
-    /// If the lock was locked and there were no waiters, the lock will be unlocked.
-    /// If the lock was not locked, the function just returns.
+    /// If the semaphore was locked and there were no waiters, the lock will be unlocked.
+    /// If the semaphore was not locked, the function just returns.
     pub fn release(&self) {
         critical_section::with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
-                LockState::Unlocked => {}
+                LockState::Unlocked(counter) => *counter += 1,
                 LockState::Locked(waiters) => {
                     if waiters.pop(cs).is_none() {
-                        *state = LockState::Unlocked
+                        *state = LockState::Unlocked(1)
                     }
                 }
             }
@@ -101,7 +106,7 @@ impl Lock {
     }
 }
 
-impl Default for Lock {
+impl<const N: usize> Default for Semaphore<N> {
     fn default() -> Self {
         Self::new()
     }

@@ -14,7 +14,7 @@ mod thread;
 mod threadlist;
 
 pub mod channel;
-pub mod lock;
+pub mod semaphore;
 pub mod thread_flags;
 
 #[doc(hidden)]

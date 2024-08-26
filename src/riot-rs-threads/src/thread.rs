@@ -36,7 +36,7 @@ pub enum ThreadState {
     Running,
     /// Suspended / paused.
     Paused,
-    /// Waiting to acquire a [`super::lock::Lock`].
+    /// Waiting to acquire a [`super::semaphore::Semaphore`].
     LockBlocked,
     /// Waiting for [`ThreadFlags`] to be set.
     FlagBlocked(crate::thread_flags::WaitMode),
