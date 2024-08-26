@@ -1,9 +1,6 @@
 use core::arch::asm;
 use core::ptr::write_volatile;
-use cortex_m::peripheral::{
-    scb::{Exception, SystemHandler},
-    SCB,
-};
+use cortex_m::peripheral::{scb::SystemHandler, SCB};
 
 use crate::{cleanup, smp::Multicore, Arch, Thread, ThreadState, THREADS};
 
@@ -202,7 +199,20 @@ unsafe fn sched(old_sp: u32) -> u32 {
     });
     loop {
         if let Some(res) = THREADS.with_mut(|mut threads| {
+            #[cfg(not(feature = "core-affinity"))]
             let next_pid = threads.runqueue.pop_next()?;
+            #[cfg(feature = "core-affinity")]
+            let next_pid = {
+                let (mut next, prio) = threads.runqueue.peek_head()?;
+                if !threads.is_affine_to_curr_core(next) {
+                    let iter = threads.runqueue.iter_from(next, prio);
+                    next = iter
+                        .filter(|pid| threads.is_affine_to_curr_core(*pid))
+                        .next()?;
+                }
+                threads.runqueue.del(next);
+                next
+            };
             if Some(next_pid) == threads.current_pid() {
                 return Some(0);
             }

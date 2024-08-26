@@ -18,6 +18,9 @@ pub struct Thread {
     /// Arch-specific thread data.
     #[allow(dead_code)]
     pub(crate) data: ThreadData,
+
+    #[cfg(feature = "core-affinity")]
+    pub core_affinity: crate::CoreAffinity,
 }
 
 /// Possible states of a thread
@@ -53,6 +56,8 @@ impl Thread {
             flags: 0,
             prio: RunqueueId::new(0),
             pid: ThreadId::new(0),
+            #[cfg(feature = "core-affinity")]
+            core_affinity: crate::CoreAffinity::no_affinity(),
         }
     }
 }

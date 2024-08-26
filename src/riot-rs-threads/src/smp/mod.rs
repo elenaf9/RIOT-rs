@@ -14,6 +14,33 @@ impl From<CoreId> for usize {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct CoreAffinity(u8);
+
+impl CoreAffinity {
+    pub const fn no_affinity() -> Self {
+        Self(2 ^ Chip::CORES as u8 - 1)
+    }
+
+    #[cfg(feature = "core-affinity")]
+    pub fn one(core: CoreId) -> Self {
+        Self(1 << core.0)
+    }
+
+    #[cfg(feature = "core-affinity")]
+    pub fn contains(&self, core: CoreId) -> bool {
+        self.0 & (1 << core.0) > 0
+    }
+}
+
+#[cfg(feature = "core-affinity")]
+impl Default for CoreAffinity {
+    fn default() -> Self {
+        Self::no_affinity()
+    }
+}
+
 pub trait Multicore {
     const CORES: u32;
 
@@ -21,6 +48,7 @@ pub trait Multicore {
 
     fn startup_cores();
 
+    #[allow(dead_code)]
     fn wait_for_wakeup();
 
     fn schedule_on_core(id: CoreId);
