@@ -139,6 +139,13 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         self.queues.advance(rq.0)
     }
 
+    /// Removes thread with pid `n`.
+    pub fn del(&mut self, n: ThreadId) {
+        if let Some(empty_runqueue) = self.queues.del(n.0) {
+            self.bitcache &= !(1 << empty_runqueue);
+        }
+    }
+
     /// Checks if a runqueue is empty.
     pub fn is_empty(&mut self, rq: RunqueueId) -> bool {
         debug_assert!((rq.0 as usize) < N_QUEUES);
@@ -237,6 +244,27 @@ mod clist {
             if let Some(head) = self.peek_head(rq) {
                 self.tail[rq as usize] = head;
             }
+        }
+
+        pub fn del(&mut self, n: u8) -> Option<u8> {
+            let mut empty_runqueue = None;
+
+            // Find previous thread in circular runqueue.
+            let prev = self.next_idxs.iter().position(|&next| next == n)?;
+
+            // Handle if thread is tail of a runqueue.
+            if let Some(rq) = self.tail.iter().position(|&tail| tail == n) {
+                if prev == n as usize {
+                    // Runqueue is empty now.
+                    self.tail[rq] = Self::sentinel();
+                    empty_runqueue = Some(rq as u8);
+                } else {
+                    self.tail[rq] = prev as u8;
+                }
+            }
+            self.next_idxs[prev] = self.next_idxs[n as usize];
+            self.next_idxs[n as usize] = Self::sentinel();
+            empty_runqueue
         }
     }
 
