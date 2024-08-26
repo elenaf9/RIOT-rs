@@ -97,16 +97,12 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         }
     }
 
-    fn ffs(val: usize) -> u32 {
-        USIZE_BITS as u32 - val.leading_zeros()
-    }
-
     /// Returns the pid that should run next.
     ///
     /// Returns the next runnable thread of
     /// the runqueue with the highest index.
     pub fn get_next(&self) -> Option<ThreadId> {
-        let rq_ffs = Self::ffs(self.bitcache);
+        let rq_ffs = ffs(self.bitcache);
         if rq_ffs == 0 {
             return None;
         }
@@ -114,12 +110,27 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         self.queues.peek_head(rq).map(ThreadId::new)
     }
 
+    /// Returns the pid that should run next.
+    ///
+    /// Returns the next runnable thread of
+    /// the runqueue with the highest index.
+    pub fn peek_head(&self) -> Option<(ThreadId, RunqueueId)> {
+        let rq_ffs = ffs(self.bitcache);
+        if rq_ffs == 0 {
+            return None;
+        }
+        let rq = rq_ffs as u8 - 1;
+        self.queues
+            .peek_head(rq)
+            .map(|id| (ThreadId::new(id), RunqueueId::new(rq)))
+    }
+
     /// Pop the thread that should run next.
     ///
     /// Pops the next runnable thread of
     /// the runqueue with the highest index.
     pub fn pop_next(&mut self) -> Option<ThreadId> {
-        let rq_ffs = Self::ffs(self.bitcache);
+        let rq_ffs = ffs(self.bitcache);
         if rq_ffs == 0 {
             return None;
         }
@@ -150,6 +161,50 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
     pub fn is_empty(&mut self, rq: RunqueueId) -> bool {
         debug_assert!((rq.0 as usize) < N_QUEUES);
         self.queues.is_empty(rq.0)
+    }
+
+    pub fn iter_from(&self, start: ThreadId, rq: RunqueueId) -> RunQueueIter<N_QUEUES, N_THREADS> {
+        RunQueueIter {
+            prev: start.0,
+            tail: self.queues.peek_tail(rq.0),
+            bitcache: self.bitcache % (1 << (rq.0 + 1)),
+            queues: &self.queues,
+        }
+    }
+}
+
+fn ffs(val: usize) -> u32 {
+    USIZE_BITS as u32 - val.leading_zeros()
+}
+
+pub struct RunQueueIter<'a, const N_QUEUES: usize, const N_THREADS: usize> {
+    prev: u8,
+    tail: Option<u8>,
+    bitcache: usize,
+    queues: &'a clist::CList<N_QUEUES, N_THREADS>,
+}
+
+impl<'a, const N_QUEUES: usize, const N_THREADS: usize> Iterator
+    for RunQueueIter<'a, { N_QUEUES }, { N_THREADS }>
+{
+    type Item = ThreadId;
+    fn next(&mut self) -> Option<Self::Item> {
+        // let prev = self.prev?;
+        if self.prev == self.tail? {
+            // Circled through whole queue, so switch to next one.
+            let rq = ffs(self.bitcache) as u8 - 1;
+            self.bitcache &= !(1 << rq);
+            if self.bitcache > 0 {
+                self.tail = self.queues.peek_tail(ffs(self.bitcache) as u8 - 1);
+                self.prev = self.tail?;
+            } else {
+                self.tail = None;
+                return None;
+            }
+        }
+        let next = self.queues.peek_next(self.prev);
+        self.prev = next;
+        Some(ThreadId(next))
     }
 }
 
@@ -202,13 +257,11 @@ mod clist {
                 self.next_idxs[n as usize] = head;
                 // 2. old_tail.next = n
                 self.next_idxs[self.tail[rq as usize] as usize] = n;
-                // 3. tail = n
-                self.tail[rq as usize] = n;
             } else {
                 // rq is empty, link both tail and n.next to n
-                self.tail[rq as usize] = n;
                 self.next_idxs[n as usize] = n;
             }
+            self.tail[rq as usize] = n;
         }
 
         #[inline]
@@ -238,6 +291,18 @@ mod clist {
             } else {
                 Some(self.next_idxs[self.tail[rq as usize] as usize])
             }
+        }
+
+        pub fn peek_tail(&self, rq: u8) -> Option<u8> {
+            if self.tail[rq as usize] == Self::sentinel() {
+                None
+            } else {
+                Some(self.tail[rq as usize])
+            }
+        }
+
+        pub fn peek_next(&self, curr: u8) -> u8 {
+            self.next_idxs[curr as usize]
         }
 
         pub fn advance(&mut self, rq: u8) {
