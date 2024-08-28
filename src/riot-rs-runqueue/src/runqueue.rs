@@ -1,7 +1,7 @@
 // Disable indexing lints for now
 #![allow(clippy::indexing_slicing)]
 
-use core::mem;
+use core::{mem, ops::Deref};
 
 use self::clist::CList;
 
@@ -21,6 +21,13 @@ impl RunqueueId {
 impl From<RunqueueId> for usize {
     fn from(value: RunqueueId) -> Self {
         usize::from(value.0)
+    }
+}
+
+impl Deref for RunqueueId {
+    type Target = u8;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

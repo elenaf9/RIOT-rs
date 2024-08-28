@@ -131,6 +131,13 @@ impl Threads {
         }
     }
 
+    /// Returns access to any thread data.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `thread_id` is >= [`THREADS_NUMOF`].
+    /// If the thread for this `thread_id` is in an invalid state, the
+    /// data in the returned [`Thread`] is undefined, i.e. empty or outdated.
     fn get_unchecked(&self, thread_id: ThreadId) -> &Thread {
         &self.threads[usize::from(thread_id)]
     }
@@ -170,29 +177,25 @@ impl Threads {
     /// # Panics
     ///
     /// Panics if `pid` is >= [`THREADS_NUMOF`].
-    fn set_state(&mut self, pid: ThreadId, state: ThreadState) -> ThreadState {
-        let old_state = core::mem::replace(&mut self.threads[usize::from(pid)].state, state);
-        match (state, old_state) {
+    fn set_state(&mut self, pid: ThreadId, new_state: ThreadState) -> ThreadState {
+        let &mut Thread {
+            ref mut state,
+            prio,
+            ..
+        } = self.get_unchecked_mut(pid);
+        let old_state = core::mem::replace(state, new_state);
+        match (new_state, old_state) {
             (new, old) if new == old => {}
             (ThreadState::Running, ThreadState::Invalid) => {
-                self.add_to_runqueue(pid);
+                self.runqueue.add(pid, prio);
                 // We are in the startup phase were all threads are created.
                 // Don't trigger the scheduler before `start_threading`.
                 // FIXME: threads aren't only created during startup, so
                 // we need to find another fix for thos.
             }
             (ThreadState::Running, _) => {
-                let prio = self.add_to_runqueue(pid);
-                #[cfg(feature = "core-affinity")]
-                let (core, lowest_prio) = {
-                    let affinity = self.get_unchecked(pid).core_affinity;
-                    self.lowest_running_prio(&affinity)
-                };
-                #[cfg(not(feature = "core-affinity"))]
-                let (core, lowest_prio) = self.lowest_running_prio();
-                if lowest_prio <= prio {
-                    schedule_on_core(core);
-                }
+                self.runqueue.add(pid, prio);
+                self.schedule_if_needed(pid, prio)
             }
             (_, ThreadState::Running) => schedule(),
             _ => {}
@@ -200,25 +203,57 @@ impl Threads {
         old_state
     }
 
-    /// Returns the state of a thread.
-    fn get_state(&self, thread_id: ThreadId) -> Option<ThreadState> {
-        if self.is_valid_pid(thread_id) {
-            Some(self.threads[usize::from(thread_id)].state)
-        } else {
-            None
+    fn get_priority(&self, thread_id: ThreadId) -> Option<RunqueueId> {
+        self.is_valid_pid(thread_id)
+            .then(|| self.get_unchecked(thread_id).prio)
+    }
+
+    /// Change the priority of a thread.
+    fn set_priority(&mut self, thread_id: ThreadId, new_prio: RunqueueId) {
+        if !self.is_valid_pid(thread_id) {
+            return;
+        }
+        let Thread { prio, state, .. } = self.get_unchecked_mut(thread_id);
+        let old_prio = *prio;
+        if old_prio == new_prio {
+            return;
+        }
+        *prio = new_prio;
+        if *state != ThreadState::Running {
+            return;
+        }
+
+        let running_on_core = self
+            .current_threads
+            .iter()
+            .position(|t| t.is_some_and(|(pid, _)| pid == thread_id));
+
+        if running_on_core.is_none() {
+            self.runqueue.del(thread_id);
+            self.runqueue.add(thread_id, new_prio);
+        }
+
+        match running_on_core {
+            Some(running_core) if new_prio < old_prio => {
+                // Another thread might have higher prio now, so trigger the scheduler.
+                schedule_on_core(CoreId::new(running_core as u8));
+            }
+            None if new_prio > old_prio => self.schedule_if_needed(thread_id, new_prio),
+            _ => {}
         }
     }
 
-    fn add_to_runqueue(&mut self, thread_id: ThreadId) -> RunqueueId {
-        let prio = self.get_unchecked(thread_id).prio;
-        self.runqueue.add(thread_id, prio);
-        prio
-    }
-
-    #[allow(dead_code)]
-    fn current_prio(&self) -> Option<RunqueueId> {
-        let current_pid = self.current_pid()?;
-        Some(self.get_unchecked(current_pid).prio)
+    fn schedule_if_needed(&self, _thread_id: ThreadId, prio: RunqueueId) {
+        #[cfg(feature = "core-affinity")]
+        let (core, lowest_prio) = {
+            let affinity = self.get_unchecked(_thread_id).core_affinity;
+            self.lowest_running_prio(&affinity)
+        };
+        #[cfg(not(feature = "core-affinity"))]
+        let (core, lowest_prio) = self.lowest_running_prio();
+        if lowest_prio <= prio {
+            schedule_on_core(core);
+        }
     }
 
     #[cfg(not(feature = "core-affinity"))]
@@ -416,6 +451,20 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
         threads.set_state(thread_id, ThreadState::Running);
         true
     })
+}
+
+/// Get the priority of a thread.
+///
+/// Returns `None` if this is not a valid thread.
+pub fn get_priority(thread_id: ThreadId) -> Option<u8> {
+    THREADS.with_mut(|threads| threads.get_priority(thread_id).map(|rq| *rq))
+}
+
+/// Change the priority of a thread.
+///
+/// This might trigger a context switch.
+pub fn set_priority(thread_id: ThreadId, prio: u8) {
+    THREADS.with_mut(|mut threads| threads.set_priority(thread_id, RunqueueId::new(prio)))
 }
 
 /// Returns the size of the internal structure that holds the
