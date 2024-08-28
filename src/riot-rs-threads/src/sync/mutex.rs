@@ -38,7 +38,7 @@ impl<T> Mutex<T> {
     ///
     /// `true` if locked, `false` otherwise
     pub fn is_locked(&self) -> bool {
-        critical_section::with(|_| {
+        crate::critical_section_with(|_| {
             let state = unsafe { &*self.state.get() };
             !matches!(state, LockState::Unlocked)
         })
@@ -54,7 +54,7 @@ impl<T> Mutex<T> {
     ///
     /// Panics if called outside of a thread context.
     pub fn lock(&self) -> MutexGuard<T> {
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {
@@ -71,7 +71,7 @@ impl<T> Mutex<T> {
                     owner_prio,
                 } => {
                     if let Some(inherit_priority) =
-                        waiters.put_current(&mut threads, ThreadState::LockBlocked)
+                        waiters.put_current(threads, ThreadState::LockBlocked)
                     {
                         if &inherit_priority > owner_prio {
                             threads.set_priority(*owner_id, inherit_priority);
@@ -92,7 +92,7 @@ impl<T> Mutex<T> {
     ///
     /// Panics if called outside of a thread context.
     pub fn try_lock(&self) -> Option<MutexGuard<T>> {
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let thread = threads.current().unwrap();
             let state = unsafe { &mut *self.state.get() };
             match state {
@@ -113,7 +113,7 @@ impl<T> Mutex<T> {
     ///
     /// If there are waiters, the first waiter will be woken up.
     fn release(&self) {
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {}
@@ -123,7 +123,7 @@ impl<T> Mutex<T> {
                     owner_prio,
                 } => {
                     threads.set_priority(*owner_id, *owner_prio);
-                    if let Some((pid, _)) = waiters.pop(&mut threads) {
+                    if let Some((pid, _)) = waiters.pop(threads) {
                         *owner_id = pid;
                         *owner_prio = threads.get_priority(pid);
                     } else {

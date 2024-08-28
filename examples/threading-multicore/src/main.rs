@@ -8,7 +8,7 @@ use riot_rs::{
     thread::{CoreAffinity, CoreId},
 };
 
-#[riot_rs::thread(autostart, affinity = CoreAffinity::one(CoreId::new(1)))]
+#[riot_rs::thread(autostart, affinity = CoreAffinity::one(CoreId::new(1)), stacksize=8096)]
 fn thread0() {
     let core = riot_rs::thread::core_id();
     let pid = riot_rs::thread::current_pid().unwrap();
@@ -16,7 +16,7 @@ fn thread0() {
     loop {}
 }
 
-#[riot_rs::thread(autostart)]
+#[riot_rs::thread(autostart, stacksize = 8096)]
 fn thread1() {
     let core = riot_rs::thread::core_id();
     let pid = riot_rs::thread::current_pid().unwrap();

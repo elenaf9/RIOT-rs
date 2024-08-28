@@ -37,7 +37,7 @@ impl Lock {
     ///
     /// true if locked, false otherwise
     pub fn is_locked(&self) -> bool {
-        critical_section::with(|_| {
+        crate::critical_section_with(|_| {
             let state = unsafe { &*self.state.get() };
             !matches!(state, LockState::Unlocked)
         })
@@ -53,12 +53,12 @@ impl Lock {
     ///
     /// Panics if this is called outside of a thread context.
     pub fn acquire(&self) {
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => *state = LockState::Locked(ThreadList::new()),
                 LockState::Locked(waiters) => {
-                    waiters.put_current(&mut threads, ThreadState::LockBlocked);
+                    waiters.put_current(threads, ThreadState::LockBlocked);
                 }
             }
         })
@@ -69,7 +69,7 @@ impl Lock {
     /// If the lock was unlocked, it will be locked and the function returns true.
     /// If the lock was locked, the function returns false
     pub fn try_acquire(&self) -> bool {
-        critical_section::with(|_| {
+        crate::critical_section_with(|_| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {
@@ -88,12 +88,12 @@ impl Lock {
     /// If the lock was locked and there were no waiters, the lock will be unlocked.
     /// If the lock was not locked, the function just returns.
     pub fn release(&self) {
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {}
                 LockState::Locked(waiters) => {
-                    if waiters.pop(&mut threads).is_none() {
+                    if waiters.pop(threads).is_none() {
                         *state = LockState::Unlocked
                     }
                 }
