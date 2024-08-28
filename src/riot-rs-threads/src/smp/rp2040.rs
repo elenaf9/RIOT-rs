@@ -1,6 +1,9 @@
+use super::{CoreId, Multicore};
 use crate::arch::{Arch, Cpu};
 
-use super::{CoreId, Multicore};
+use internal_critical_section::SpinlockCS;
+
+use critical_section::CriticalSection;
 use embassy_rp::{
     multicore::{spawn_core1, Stack},
     peripherals::CORE1,
@@ -46,6 +49,11 @@ impl Multicore for Chip {
         // Wake up other core if it `WFE`s.
         cortex_m::asm::sev();
     }
+
+    fn cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+        let _lock = unsafe { SpinlockCS::acquire() };
+        unsafe { f(CriticalSection::new()) }
+    }
 }
 
 const SCHEDULE_TOKEN: u32 = 0x111;
@@ -70,4 +78,61 @@ fn handle_fifo_msg() {
             crate::schedule();
         }
     }
+}
+
+mod internal_critical_section {
+    use rp_pac::SIO;
+
+    pub struct Spinlock<const N: usize> {
+        token: u8,
+    }
+
+    impl<const N: usize> Spinlock<N> {
+        pub unsafe fn acquire() -> Self {
+            // Store the initial interrupt state and current core id in stack variables
+            let interrupts_active = cortex_m::register::primask::read().is_active();
+            // Spin until we get the lock
+            loop {
+                // Need to disable interrupts to ensure that we will not deadlock
+                // if an interrupt enters critical_section::Impl after we acquire the lock
+                cortex_m::interrupt::disable();
+                // Read the spinlock reserved for the internal `critical_section`
+                if SIO.spinlock(N).read() > 0 {
+                    // We just acquired the lock.
+                    break;
+                }
+                // We didn't get the lock, enable interrupts if they were enabled before we started
+                if interrupts_active {
+                    unsafe {
+                        cortex_m::interrupt::enable();
+                    }
+                }
+            }
+            // If we broke out of the loop we have just acquired the lock
+            // We want to remember the interrupt status to restore later
+            Self {
+                token: interrupts_active as u8,
+            }
+        }
+
+        unsafe fn release(&mut self) {
+            // Release the spinlock to allow others to enter critical_section again
+            SIO.spinlock(N).write_value(1);
+            // Re-enable interrupts if they were enabled when we first called acquire()
+            if self.token != 0 {
+                unsafe {
+                    cortex_m::interrupt::enable();
+                }
+            }
+        }
+    }
+
+    impl<const N: usize> Drop for Spinlock<N> {
+        fn drop(&mut self) {
+            // This is safe because we own the object, and hence hold the lock.
+            unsafe { self.release() }
+        }
+    }
+
+    pub type SpinlockCS = Spinlock<30>;
 }

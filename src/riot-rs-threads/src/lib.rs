@@ -39,7 +39,7 @@ pub use arch::schedule;
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::RunQueue;
-use smp::{schedule_on_core, Multicore};
+use smp::{cs_with, schedule_on_core, Multicore};
 use thread::{Thread, ThreadState};
 
 #[cfg(not(feature = "core-affinity"))]

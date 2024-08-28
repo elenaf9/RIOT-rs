@@ -38,7 +38,7 @@ impl<const N: usize> Semaphore<N> {
     ///
     /// true if locked, false otherwise
     pub fn is_locked(&self) -> bool {
-        critical_section::with(|_| {
+        crate::cs_with(|_| {
             let state = unsafe { &*self.state.get() };
             !matches!(state, LockState::Unlocked(_))
         })
@@ -52,7 +52,7 @@ impl<const N: usize> Semaphore<N> {
     ///
     /// **NOTE**: must not be called outside thread context!
     pub fn acquire(&self) {
-        critical_section::with(|cs| {
+        crate::cs_with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked(1) => *state = LockState::Locked(ThreadList::new()),
@@ -69,7 +69,7 @@ impl<const N: usize> Semaphore<N> {
     /// If the semaphore was unlocked, it will be locked and the function returns true.
     /// If the semaphore was locked, the function returns false
     pub fn try_acquire(&self) -> bool {
-        critical_section::with(|_| {
+        crate::cs_with(|_| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked(1) => {
@@ -92,7 +92,7 @@ impl<const N: usize> Semaphore<N> {
     /// If the semaphore was locked and there were no waiters, the lock will be unlocked.
     /// If the semaphore was not locked, the function just returns.
     pub fn release(&self) {
-        critical_section::with(|cs| {
+        crate::cs_with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked(counter) => *counter += 1,

@@ -1,3 +1,5 @@
+use critical_section::CriticalSection;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct CoreId(u8);
@@ -52,6 +54,8 @@ pub trait Multicore {
     fn wait_for_wakeup();
 
     fn schedule_on_core(id: CoreId);
+
+    fn cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R;
 }
 
 cfg_if::cfg_if! {
@@ -79,10 +83,18 @@ cfg_if::cfg_if! {
             fn schedule_on_core(_id: CoreId) {
                 Cpu::schedule();
             }
+
+            fn cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+                critical_section::with(f)
+            }
         }
     }
 }
 
 pub fn schedule_on_core(id: CoreId) {
     Chip::schedule_on_core(id)
+}
+
+pub fn cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+    Chip::cs_with(f)
 }

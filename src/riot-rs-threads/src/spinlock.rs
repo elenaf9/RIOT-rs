@@ -84,7 +84,7 @@ impl<T> Spinlock<T> {
     ///
     /// true if locked, false otherwise
     pub fn is_locked(&self) -> bool {
-        critical_section::with(|cs| {
+        crate::cs_with(|cs| {
             let state = self.state.borrow(cs).borrow();
             matches!(*state, LockState::Locked { .. })
         })
@@ -98,7 +98,7 @@ impl<T> Spinlock<T> {
     ///
     /// **NOTE**: must not be called outside thread context!
     pub fn acquire(&self) -> SpinlockGuard<T> {
-        while critical_section::with(|cs| {
+        while crate::cs_with(|cs| {
             let mut state = self.state.borrow(cs).borrow_mut();
             match *state {
                 LockState::Unlocked => {
@@ -116,7 +116,7 @@ impl<T> Spinlock<T> {
     }
 
     pub fn acquire_mut(&self) -> SpinlockGuardMut<T> {
-        while critical_section::with(|cs| {
+        while crate::cs_with(|cs| {
             let mut state = self.state.borrow(cs).borrow_mut();
             if *state == LockState::Unlocked {
                 *state = LockState::LockedMut;
@@ -135,7 +135,7 @@ impl<T> Spinlock<T> {
     /// If the spinlock was locked and there were no waiters, the lock will be unlocked.
     /// If the spinlock was not locked, the function just returns.
     fn release(&self) {
-        critical_section::with(|cs| {
+        crate::cs_with(|cs| {
             let mut state = self.state.borrow(cs).borrow_mut();
             match *state {
                 LockState::Locked(1) | LockState::LockedMut => *state = LockState::Unlocked,

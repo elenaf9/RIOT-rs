@@ -1,7 +1,7 @@
 //! This module provides a Mutex-protected RefCell --- basically a way to ensure
 //! at runtime that some reference is used only once.
 use core::cell::{Ref, RefCell, RefMut};
-use critical_section::{with, CriticalSection, Mutex};
+use critical_section::{CriticalSection, Mutex};
 
 pub(crate) struct EnsureOnce<T> {
     inner: Mutex<RefCell<T>>,
@@ -18,14 +18,14 @@ impl<T> EnsureOnce<T> {
     where
         F: FnOnce(Ref<T>) -> R,
     {
-        with(|cs| self.with_cs(cs, f))
+        crate::cs_with(|cs| self.with_cs(cs, f))
     }
 
     pub fn with_mut<F, R>(&self, f: F) -> R
     where
         F: FnOnce(RefMut<T>) -> R,
     {
-        with(|cs| self.with_mut_cs(cs, f))
+        crate::cs_with(|cs| self.with_mut_cs(cs, f))
     }
 
     pub fn with_cs<F, R>(&self, cs: CriticalSection, f: F) -> R

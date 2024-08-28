@@ -6,7 +6,6 @@ use core::mem::MaybeUninit;
 
 use crate::threadlist::ThreadList;
 use crate::ThreadState;
-use critical_section::with;
 
 enum ChannelState {
     Idle,
@@ -30,7 +29,7 @@ impl<T: Copy + Send> Channel<T> {
     }
 
     pub fn send(&self, something: &T) {
-        with(|cs| {
+        crate::cs_with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 ChannelState::Idle => {
@@ -67,7 +66,7 @@ impl<T: Copy + Send> Channel<T> {
     }
 
     pub fn try_send(&self, something: &T) -> bool {
-        with(|cs| {
+        crate::cs_with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 ChannelState::ReceiversWaiting(waiters) => {
@@ -94,7 +93,7 @@ impl<T: Copy + Send> Channel<T> {
     pub fn recv(&self) -> T {
         let mut res: MaybeUninit<T> = MaybeUninit::uninit();
 
-        with(|cs| {
+        crate::cs_with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             let ptr = res.as_mut_ptr();
             match state {
@@ -134,7 +133,7 @@ impl<T: Copy + Send> Channel<T> {
 
     pub fn try_recv(&self) -> Option<T> {
         let mut res: MaybeUninit<T> = MaybeUninit::uninit();
-        let have_received = with(|cs| {
+        let have_received = crate::cs_with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 ChannelState::SendersWaiting(waiters) => {
