@@ -6,7 +6,7 @@ use core::mem::MaybeUninit;
 
 use crate::threadlist::ThreadList;
 use crate::ThreadState;
-use critical_section::with;
+use crate::critical_section_with as with;
 
 enum ChannelState {
     Idle,

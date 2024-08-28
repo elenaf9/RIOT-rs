@@ -21,7 +21,7 @@ impl ThreadList {
     ///
     /// Panics if this is called outside of a thread context.
     pub fn put_current(&mut self, cs: CriticalSection, state: ThreadState) {
-        THREADS.with_mut_cs(cs, |mut threads| {
+        THREADS.with_mut_cs(cs, |threads| {
             let &mut Thread { pid, prio, .. } = threads
                 .current()
                 .expect("Function should be called inside a thread context.");
@@ -51,7 +51,7 @@ impl ThreadList {
     /// Returns the thread's [`ThreadId`] and its previous [`ThreadState`].
     pub fn pop(&mut self, cs: CriticalSection) -> Option<(ThreadId, ThreadState)> {
         let head = self.head?;
-        THREADS.with_mut_cs(cs, |mut threads| {
+        THREADS.with_mut_cs(cs, |threads| {
             self.head = threads.thread_blocklist[usize::from(head)].take();
             let old_state = threads.set_state(head, ThreadState::Running);
             Some((head, old_state))

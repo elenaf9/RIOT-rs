@@ -194,7 +194,7 @@ unsafe extern "C" fn PendSV() {
 #[no_mangle]
 unsafe fn sched() -> u128 {
     loop {
-        if let Some(res) = critical_section::with(|cs| {
+        if let Some(res) = crate::critical_section_with(|cs| {
             let threads = unsafe { &mut *THREADS.as_ptr(cs) };
 
             #[cfg(feature = "multi-core")]

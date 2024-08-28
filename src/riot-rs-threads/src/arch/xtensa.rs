@@ -103,7 +103,7 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 /// context switching.
 unsafe fn sched(trap_frame: &mut TrapFrame) {
     loop {
-        if THREADS.with_mut(|mut threads| {
+        if THREADS.with_mut(|threads| {
             #[cfg(feature = "multi-core")]
             threads.add_current_thread_to_rq();
 

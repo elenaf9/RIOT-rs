@@ -1,5 +1,7 @@
-use crate::CoreId;
+use critical_section::CriticalSection;
 use riot_rs_utils::usize_from_env_or;
+
+use crate::CoreId;
 
 impl CoreId {
     /// Creates a new [`CoreId`].
@@ -35,6 +37,13 @@ pub trait Multicore {
 
     /// Triggers the scheduler on core `id`.
     fn schedule_on_core(id: CoreId);
+
+    /// Executes a function inside a critical section.
+    ///
+    /// Mutual exclusion with `critical_section::with` is not guaranteed.
+    /// The implementation may use `critical_section::with`, but can also be
+    /// independent.
+    fn critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R;
 }
 
 cfg_if::cfg_if! {
@@ -61,8 +70,20 @@ cfg_if::cfg_if! {
             fn schedule_on_core(_id: CoreId) {
                 Cpu::schedule();
             }
+            fn critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+                critical_section::with(f)
+            }
         }
     }
+}
+
+/// Executes a function inside a critical section.
+///
+/// Mutual exclusion with `critical_section::with` is not guaranteed.
+/// The implementation may use `critical_section::with`, but can also be
+/// independent.
+pub fn critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+    Chip::critical_section_with(f)
 }
 
 /// Triggers the scheduler on core `id`.

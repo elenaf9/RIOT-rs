@@ -1,7 +1,7 @@
 //! This module provides a Mutex-protected RefCell --- basically a way to ensure
 //! at runtime that some reference is used only once.
-use core::cell::{Ref, RefCell, RefMut};
-use critical_section::{with, CriticalSection, Mutex};
+use core::cell::RefCell;
+use critical_section::{CriticalSection, Mutex};
 
 pub(crate) struct EnsureOnce<T> {
     inner: Mutex<RefCell<T>>,
@@ -16,30 +16,30 @@ impl<T> EnsureOnce<T> {
 
     pub fn with<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(Ref<T>) -> R,
+        F: FnOnce(&T) -> R,
     {
-        with(|cs| self.with_cs(cs, f))
+        crate::critical_section_with(|cs| self.with_cs(cs, f))
     }
 
     pub fn with_mut<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(RefMut<T>) -> R,
+        F: FnOnce(&mut T) -> R,
     {
-        with(|cs| self.with_mut_cs(cs, f))
+        crate::critical_section_with(|cs| self.with_mut_cs(cs, f))
     }
 
     pub fn with_cs<F, R>(&self, cs: CriticalSection, f: F) -> R
     where
-        F: FnOnce(Ref<T>) -> R,
+        F: FnOnce(&T) -> R,
     {
-        f(self.inner.borrow(cs).borrow())
+        f(&self.inner.borrow(cs).borrow())
     }
 
     pub fn with_mut_cs<F, R>(&self, cs: CriticalSection, f: F) -> R
     where
-        F: FnOnce(RefMut<T>) -> R,
+        F: FnOnce(&mut T) -> R,
     {
-        f(self.inner.borrow(cs).borrow_mut())
+        f(&mut self.inner.borrow(cs).borrow_mut())
     }
 
     // pub fn borrow_mut<'a>(&'a self, cs: &'a CriticalSection) -> RefMut<T> {
