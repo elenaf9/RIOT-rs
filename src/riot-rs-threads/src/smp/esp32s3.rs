@@ -1,3 +1,4 @@
+use critical_section::CriticalSection;
 use esp_hal::{
     cpu_control::{CpuControl, Stack},
     interrupt,
@@ -84,5 +85,43 @@ impl Multicore for Chip {
                 .write(|w| w.cpu_intr_from_cpu_1().set_bit()),
             _ => unreachable!(),
         };
+    }
+
+    fn critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+        let _guard = internal_critical_section::acquire();
+        unsafe { f(CriticalSection::new()) }
+    }
+}
+mod internal_critical_section {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+
+    static MULTICORE_LOCK: AtomicUsize = AtomicUsize::new(0);
+
+    pub struct Guard {
+        tkn: u32,
+    }
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            MULTICORE_LOCK.store(0, Ordering::Release);
+
+            // Copied from `esp_hal::critical_section_impl::xtensa::release`
+            const RESERVED_MASK: u32 = 0b1111_1111_1111_1000_1111_0000_0000_0000;
+            debug_assert!(self.tkn & RESERVED_MASK == 0);
+            unsafe {
+                core::arch::asm!(
+                    "wsr.ps {0}",
+                    "rsync", in(reg) self.tkn)
+            }
+        }
+    }
+
+    pub fn acquire() -> Guard {
+        let mut tkn: u32;
+        unsafe {
+            core::arch::asm!("rsil {0}, 5", out(reg) tkn);
+        }
+        while MULTICORE_LOCK.swap(1, Ordering::Acquire) > 0 {}
+        Guard { tkn }
     }
 }
