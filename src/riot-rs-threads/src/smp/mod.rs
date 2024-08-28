@@ -76,7 +76,9 @@ cfg_if::cfg_if! {
                 Cpu::wfi();
             }
 
-            fn schedule_on_core(_id: CoreId) {}
+            fn schedule_on_core(_id: CoreId) {
+                Cpu::schedule();
+            }
         }
     }
 }
