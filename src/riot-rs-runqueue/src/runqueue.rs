@@ -119,7 +119,7 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
     ///
     /// Returns the next runnable thread of
     /// the runqueue with the highest index.
-    pub fn peek_head(&self) -> Option<(ThreadId, RunqueueId)> {
+    pub fn peek_next(&self) -> Option<(ThreadId, RunqueueId)> {
         let rq_ffs = ffs(self.bitcache);
         if rq_ffs == 0 {
             return None;

@@ -105,7 +105,7 @@ mod tests {
         runqueue.add(ThreadId::new(2), RunqueueId::new(2));
         runqueue.add(ThreadId::new(3), RunqueueId::new(3));
 
-        let (head, rq) = runqueue.peek_head().unwrap();
+        let (head, rq) = runqueue.peek_next().unwrap();
         assert_eq!(head, ThreadId::new(3));
         assert_eq!(rq, RunqueueId::new(3));
         let mut iter = runqueue.iter_from(head, rq);

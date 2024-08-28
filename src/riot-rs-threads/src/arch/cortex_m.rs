@@ -203,7 +203,7 @@ unsafe fn sched(old_sp: u32) -> u32 {
             let next_pid = threads.runqueue.pop_next()?;
             #[cfg(feature = "core-affinity")]
             let next_pid = {
-                let (mut next, prio) = threads.runqueue.peek_head()?;
+                let (mut next, prio) = threads.runqueue.peek_next()?;
                 if !threads.is_affine_to_curr_core(next) {
                     let iter = threads.runqueue.iter_from(next, prio);
                     next = iter
