@@ -13,9 +13,7 @@ mod smp;
 mod thread;
 mod threadlist;
 
-pub mod channel;
-pub mod semaphore;
-pub mod spinlock;
+pub mod sync;
 pub mod thread_flags;
 
 #[doc(hidden)]

@@ -17,7 +17,6 @@ linkme = { workspace = true }
 paste.workspace = true
 riot-rs-runqueue.workspace = true
 static_cell.workspace = true
-embassy-sync.workspace = true
 
 defmt = { workspace = true, optional = true }
 

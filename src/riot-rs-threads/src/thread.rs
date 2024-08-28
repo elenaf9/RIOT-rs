@@ -36,13 +36,13 @@ pub enum ThreadState {
     Running,
     /// Suspended / paused.
     Paused,
-    /// Waiting to acquire a [`super::semaphore::Semaphore`].
+    /// Waiting to acquire a [`crate::sync::Semaphore`].
     LockBlocked,
     /// Waiting for [`ThreadFlags`] to be set.
     FlagBlocked(crate::thread_flags::WaitMode),
-    /// Waiting to receive on a [`super::channel::Channel`], i.e. waiting for the sender.
+    /// Waiting to receive on a [`crate::sync::Channel`], i.e. waiting for the sender.
     ChannelRxBlocked(usize),
-    /// Waiting to send on a [`super::channel::Channel`], i.e. waiting for the receiver.
+    /// Waiting to send on a [`crate::sync::Channel`], i.e. waiting for the receiver.
     ChannelTxBlocked(usize),
 }
 

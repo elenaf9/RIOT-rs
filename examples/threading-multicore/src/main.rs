@@ -5,7 +5,7 @@
 
 use riot_rs::{
     debug::println,
-    thread::{channel::Channel, yield_same, CoreAffinity, CoreId},
+    thread::{sync::Channel, yield_same, CoreAffinity, CoreId},
 };
 
 static CHANNEL: Channel<bool> = Channel::new();
