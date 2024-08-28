@@ -37,7 +37,7 @@ impl Lock {
     ///
     /// true if locked, false otherwise
     pub fn is_locked(&self) -> bool {
-        critical_section::with(|_| {
+        crate::critical_section_with(|_| {
             let state = unsafe { &*self.state.get() };
             !matches!(state, LockState::Unlocked)
         })
@@ -69,7 +69,7 @@ impl Lock {
     /// If the lock was unlocked, it will be locked and the function returns true.
     /// If the lock was locked, the function returns false
     pub fn try_acquire(&self) -> bool {
-        critical_section::with(|_| {
+        crate::critical_section_with(|_| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {

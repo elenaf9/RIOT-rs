@@ -66,9 +66,12 @@ use riot_rs_runqueue::RunQueue;
 use thread::{Thread, ThreadState};
 
 #[cfg(feature = "multicore")]
-use smp::{schedule_on_core, Multicore};
+use smp::{critical_section_with, schedule_on_core, Multicore};
 #[cfg(feature = "multicore")]
 use static_cell::ConstStaticCell;
+
+#[cfg(not(feature = "multicore"))]
+use critical_section::with as critical_section_with;
 
 /// Dummy type that is needed because [`CoreAffinity`] is part of the general API.
 ///

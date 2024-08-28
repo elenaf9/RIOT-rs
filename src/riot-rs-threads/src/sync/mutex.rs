@@ -38,7 +38,7 @@ impl<T> Mutex<T> {
     ///
     /// `true` if locked, `false` otherwise
     pub fn is_locked(&self) -> bool {
-        critical_section::with(|_| {
+        crate::critical_section_with(|_| {
             let state = unsafe { &*self.state.get() };
             !matches!(state, LockState::Unlocked)
         })
