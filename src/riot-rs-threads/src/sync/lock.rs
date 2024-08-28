@@ -1,32 +1,32 @@
-//! This module provides a Semaphore implementation.
+//! This module provides a Lock implementation.
 use core::cell::UnsafeCell;
 
 use crate::{threadlist::ThreadList, ThreadState};
 
-/// A basic binary semaphore.
+/// A basic locking object.
 ///
-/// A `Semaphore` behaves like a Mutex, but carries no data.
+/// A `Lock` behaves like a Mutex, but carries no data.
 /// This is supposed to be used to implement other locking primitives.
-pub struct Semaphore<const N: usize> {
+pub struct Lock {
     state: UnsafeCell<LockState>,
 }
 
-unsafe impl<const N: usize> Sync for Semaphore<N> {}
+unsafe impl Sync for Lock {}
 
 enum LockState {
-    Unlocked(usize),
+    Unlocked,
     Locked(ThreadList),
 }
 
-impl<const N: usize> Semaphore<N> {
-    /// Creates new **unlocked** Semaphore
+impl Lock {
+    /// Creates new **unlocked** Lock
     pub const fn new() -> Self {
         Self {
-            state: UnsafeCell::new(LockState::Unlocked(N)),
+            state: UnsafeCell::new(LockState::Unlocked),
         }
     }
 
-    /// Creates new **locked** Semaphore
+    /// Creates new **locked** Lock
     pub const fn new_locked() -> Self {
         Self {
             state: UnsafeCell::new(LockState::Locked(ThreadList::new())),
@@ -39,23 +39,22 @@ impl<const N: usize> Semaphore<N> {
     pub fn is_locked(&self) -> bool {
         crate::cs_with(|_| {
             let state = unsafe { &*self.state.get() };
-            !matches!(state, LockState::Unlocked(_))
+            !matches!(state, LockState::Unlocked)
         })
     }
 
-    /// Get this semaphore (blocking)
+    /// Get this lock (blocking)
     ///
-    /// If the semaphore was unlocked, it will be locked and the function returns.
-    /// If the semaphore was locked, this function will unschedule the current thread until the
-    /// semaphore gets unlocked elsewhere.
+    /// If the lock was unlocked, it will be locked and the function returns.
+    /// If the lock was locked, this function will block the current thread until the lock gets
+    /// unlocked elsewhere.
     ///
     /// **NOTE**: must not be called outside thread context!
     pub fn acquire(&self) {
         crate::cs_with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
-                LockState::Unlocked(1) => *state = LockState::Locked(ThreadList::new()),
-                LockState::Unlocked(counter) => *counter -= 1,
+                LockState::Unlocked => *state = LockState::Locked(ThreadList::new()),
                 LockState::Locked(waiters) => {
                     waiters.put_current(cs, ThreadState::LockBlocked);
                 }
@@ -63,20 +62,16 @@ impl<const N: usize> Semaphore<N> {
         })
     }
 
-    /// Get the semaphore (non-blocking)
+    /// Get the lock (non-blocking)
     ///
-    /// If the semaphore was unlocked, it will be locked and the function returns true.
-    /// If the semaphore was locked, the function returns false
+    /// If the lock was unlocked, it will be locked and the function returns true.
+    /// If the lock was locked, the function returns false
     pub fn try_acquire(&self) -> bool {
         crate::cs_with(|_| {
             let state = unsafe { &mut *self.state.get() };
             match state {
-                LockState::Unlocked(1) => {
+                LockState::Unlocked => {
                     *state = LockState::Locked(ThreadList::new());
-                    true
-                }
-                LockState::Unlocked(counter) => {
-                    *counter -= 1;
                     true
                 }
                 LockState::Locked(_) => false,
@@ -84,20 +79,20 @@ impl<const N: usize> Semaphore<N> {
         })
     }
 
-    /// Releases the semaphore.
+    /// Releases the lock.
     ///
-    /// If the semaphore was locked, and there were waiters, the first waiter will be
+    /// If the lock was locked, and there were waiters, the first waiter will be
     /// woken up.
-    /// If the semaphore was locked and there were no waiters, the lock will be unlocked.
-    /// If the semaphore was not locked, the function just returns.
+    /// If the lock was locked and there were no waiters, the lock will be unlocked.
+    /// If the lock was not locked, the function just returns.
     pub fn release(&self) {
         crate::cs_with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
-                LockState::Unlocked(counter) => *counter += 1,
+                LockState::Unlocked => {}
                 LockState::Locked(waiters) => {
                     if waiters.pop(cs).is_none() {
-                        *state = LockState::Unlocked(1)
+                        *state = LockState::Unlocked
                     }
                 }
             }
@@ -105,7 +100,7 @@ impl<const N: usize> Semaphore<N> {
     }
 }
 
-impl<const N: usize> Default for Semaphore<N> {
+impl Default for Lock {
     fn default() -> Self {
         Self::new()
     }

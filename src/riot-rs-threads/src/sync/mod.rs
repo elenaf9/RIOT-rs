@@ -1,9 +1,9 @@
 //! Synchronization primitives for RIOT-rs threads.
 
 mod channel;
-mod semaphore;
+mod lock;
 mod spinlock;
 
 pub use channel::Channel;
-pub use semaphore::Semaphore;
+pub use lock::Lock;
 pub use spinlock::{Spinlock, SpinlockGuard, SpinlockGuardMut};
