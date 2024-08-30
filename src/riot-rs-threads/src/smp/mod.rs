@@ -56,6 +56,8 @@ pub trait Multicore {
     fn schedule_on_core(id: CoreId);
 
     fn cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R;
+
+    fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R;
 }
 
 cfg_if::cfg_if! {
@@ -87,6 +89,10 @@ cfg_if::cfg_if! {
             fn cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
                 critical_section::with(f)
             }
+
+            fn no_preemption_with<R>(f: impl FnOnce() -> R ) -> R {
+                critical_section::with(|_| f())
+            }
         }
     }
 }
@@ -97,4 +103,8 @@ pub fn schedule_on_core(id: CoreId) {
 
 pub fn cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
     Chip::cs_with(f)
+}
+
+pub fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R {
+    Chip::no_preemption_with(f)
 }

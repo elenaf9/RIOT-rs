@@ -54,6 +54,11 @@ impl Multicore for Chip {
         let _lock = unsafe { SpinlockCS::acquire() };
         unsafe { f(CriticalSection::new()) }
     }
+
+    fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R {
+        internal_preemption_lock::with(f) 
+    }
+    
 }
 
 const SCHEDULE_TOKEN: u32 = 0x111;
@@ -135,4 +140,42 @@ mod internal_critical_section {
     }
 
     pub type SpinlockCS = Spinlock<30>;
+}
+
+mod internal_preemption_lock {
+
+    unsafe fn enable_interrupts(interrupts_active: bool) {
+        if interrupts_active {
+            unsafe {
+                cortex_m::interrupt::enable();
+            }
+        }
+    }
+
+    unsafe fn disable_interrupts() -> bool {
+        let interrupts_active = cortex_m::register::primask::read().is_active();
+        if interrupts_active {
+            cortex_m::interrupt::disable();
+        }
+        interrupts_active
+    }
+
+    pub fn with<R>(f: impl FnOnce() -> R) -> R {
+        // Helper for making sure `release` is called even if `f` panics.
+        struct Guard {
+            interrupts_enabled: bool,
+        }
+
+        impl Drop for Guard {
+            #[inline(always)]
+            fn drop(&mut self) {
+                unsafe { enable_interrupts(self.interrupts_enabled) }
+            }
+        }
+
+        let interrupts_enabled = unsafe { disable_interrupts() };
+        let _guard = Guard { interrupts_enabled };
+
+        unsafe { f() }
+    }
 }
