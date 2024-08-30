@@ -49,7 +49,11 @@ impl Multicore for Chip {
         }
     }
 
-    fn critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+    fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R {
+        internal_preemption_lock::with(|| f())
+    }
+
+    fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
         let _lock = unsafe { SpinlockCS::acquire() };
         unsafe { f(CriticalSection::new()) }
     }
@@ -108,14 +112,10 @@ fn handle_fifo_msg() {
 mod internal_critical_section {
     use rp_pac::SIO;
 
-    pub struct Spinlock<const N: usize> {
-        token: u8,
-    }
+    pub struct Spinlock<const N: usize>;
 
     impl<const N: usize> Spinlock<N> {
         pub unsafe fn acquire() -> Self {
-            // Store the initial interrupt state and current core id in stack variables
-            let interrupts_active = cortex_m::register::primask::read().is_active();
             // Spin until we get the lock
             loop {
                 // Need to disable interrupts to ensure that we will not deadlock
@@ -126,29 +126,15 @@ mod internal_critical_section {
                     // We just acquired the lock.
                     break;
                 }
-                // We didn't get the lock, enable interrupts if they were enabled before we started
-                if interrupts_active {
-                    unsafe {
-                        cortex_m::interrupt::enable();
-                    }
-                }
             }
             // If we broke out of the loop we have just acquired the lock
             // We want to remember the interrupt status to restore later
-            Self {
-                token: interrupts_active as u8,
-            }
+            Self
         }
 
         unsafe fn release(&mut self) {
             // Release the spinlock to allow others to enter critical_section again
             SIO.spinlock(N).write_value(1);
-            // Re-enable interrupts if they were enabled when we first called acquire()
-            if self.token != 0 {
-                unsafe {
-                    cortex_m::interrupt::enable();
-                }
-            }
         }
     }
 
@@ -160,4 +146,42 @@ mod internal_critical_section {
     }
 
     pub type SpinlockCS = Spinlock<30>;
+}
+
+mod internal_preemption_lock {
+
+    unsafe fn enable_interrupts(interrupts_active: bool) {
+        if interrupts_active {
+            unsafe {
+                cortex_m::interrupt::enable();
+            }
+        }
+    }
+
+    unsafe fn disable_interrupts() -> bool {
+        let interrupts_active = cortex_m::register::primask::read().is_active();
+        if interrupts_active {
+            cortex_m::interrupt::disable();
+        }
+        interrupts_active
+    }
+
+    pub fn with<R>(f: impl FnOnce() -> R) -> R {
+        // Helper for making sure `release` is called even if `f` panics.
+        struct Guard {
+            interrupts_enabled: bool,
+        }
+
+        impl Drop for Guard {
+            #[inline(always)]
+            fn drop(&mut self) {
+                unsafe { enable_interrupts(self.interrupts_enabled) }
+            }
+        }
+
+        let interrupts_enabled = unsafe { disable_interrupts() };
+        let _guard = Guard { interrupts_enabled };
+
+        f()
+    }
 }

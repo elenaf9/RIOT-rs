@@ -1,10 +1,10 @@
+use critical_section::CriticalSection;
 use esp_hal::{
     cpu_control::{CpuControl, Stack},
     interrupt,
     peripherals::{Interrupt, CPU_CTRL, SYSTEM},
     Cpu,
 };
-
 use static_cell::ConstStaticCell;
 
 use super::{CoreId, Multicore};
@@ -84,5 +84,13 @@ impl Multicore for Chip {
                 .write(|w| w.cpu_intr_from_cpu_1().set_bit()),
             _ => unreachable!(),
         };
+    }
+
+    fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R {
+        critical_section::with(|_| f())
+    }
+
+    fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection) -> R) -> R {
+        unsafe { f(CriticalSection::new()) }
     }
 }

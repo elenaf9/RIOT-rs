@@ -35,7 +35,7 @@ mod ensure_once;
 mod thread;
 mod threadlist;
 
-#[cfg(feature = "multicore")]
+// #[cfg(feature = "multicore")]
 mod smp;
 
 pub mod sync;
