@@ -1,5 +1,5 @@
-use core::arch::asm;
-use core::ptr::write_volatile;
+use core::{arch::asm, ops::DerefMut, ptr::write_volatile};
+
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
 
 use crate::{cleanup, smp::Multicore, Arch, Thread, ThreadState, THREADS};
@@ -28,7 +28,12 @@ impl Arch for Cpu {
     /// |   PC    |
     /// |   PSR   |
     /// +---------+
-    fn setup_stack(thread: &mut Thread, stack: &mut [u8], func: usize, arg: usize) {
+    fn setup_stack<T: DerefMut<Target = Thread>>(
+        mut thread: T,
+        stack: &mut [u8],
+        func: usize,
+        arg: usize,
+    ) {
         let stack_start = stack.as_ptr() as usize;
 
         // 1. The stack starts at the highest address and grows downwards.
@@ -189,37 +194,38 @@ unsafe extern "C" fn PendSV() {
 unsafe fn sched(old_sp: u32) -> u32 {
     THREADS.with_mut(|threads| {
         if let Some(current_pid) = threads.current_pid() {
-            let thread = threads.get_unchecked_mut(current_pid);
+            let mut thread = threads.get_unchecked_mut(current_pid);
             thread.sp = old_sp as usize;
             if thread.state == ThreadState::Running {
-                let prio = thread.prio;
-                threads.runqueue.add(current_pid, prio);
+                threads.runqueue.acquire_mut().add(current_pid, thread.prio);
             }
         }
     });
     loop {
         if let Some(res) = THREADS.with_mut(|threads| {
+            let mut runqueue = threads.runqueue.acquire_mut();
             #[cfg(not(feature = "core-affinity"))]
-            let next_pid = threads.runqueue.pop_next()?;
+            let next_pid = runqueue.pop_next()?;
             #[cfg(feature = "core-affinity")]
             let next_pid = {
-                let (mut next, prio) = threads.runqueue.peek_next()?;
+                let (mut next, prio) = runqueue.peek_next()?;
                 if !threads.is_affine_to_curr_core(next) {
-                    let iter = threads.runqueue.iter_from(next, prio);
+                    let iter = runqueue.iter_from(next, prio);
                     next = iter
                         .filter(|pid| threads.is_affine_to_curr_core(*pid))
                         .next()?;
                 }
-                threads.runqueue.del(next);
+                runqueue.del(next);
                 next
             };
+            drop(runqueue);
             if Some(next_pid) == threads.current_pid() {
                 return Some(0);
             }
-            let &Thread { prio, sp, .. } = threads.get_unchecked(next_pid);
-            threads.set_current(next_pid, prio);
+            let thread = threads.get_unchecked(next_pid);
+            threads.set_current(next_pid, thread.prio);
 
-            Some(sp as u32)
+            Some(thread.sp as u32)
         }) {
             break res;
         }

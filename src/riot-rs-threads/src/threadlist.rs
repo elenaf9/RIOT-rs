@@ -1,6 +1,6 @@
-use core::ops::DerefMut;
+use core::ops::Deref;
 
-use crate::{thread::Thread, RunqueueId, ThreadId, ThreadState, Threads};
+use crate::{RunqueueId, ThreadId, ThreadState, Threads};
 
 /// Manages blocked [`super::Thread`]s for a resource, and triggering the scheduler when needed.
 #[derive(Debug, Default)]
@@ -18,25 +18,30 @@ impl ThreadList {
     /// Puts the current (blocked) thread into this [`ThreadList`] and triggers the scheduler.
     ///
     /// Returns a `RunqueueId` if the highest priority among the waiters in the list has changed.
-    pub fn put_current<T: DerefMut<Target = Threads>>(
+    pub fn put_current<T: Deref<Target = Threads>>(
         &mut self,
-        threads: &mut T,
+        threads: &T,
         state: ThreadState,
     ) -> Option<RunqueueId> {
-        let &mut Thread { pid, prio, .. } = threads.current().unwrap();
+        let thread = threads.current().unwrap();
+        let prio = thread.prio;
+        let pid = thread.pid;
+        drop(thread);
         let mut curr = None;
         let mut next = self.head;
         while let Some(n) = next {
-            if threads.get_unchecked_mut(n).prio < prio {
+            let thread_b = threads.get_unchecked(n);
+            if thread_b.prio < prio {
                 break;
             }
+            drop(thread_b);
             curr = next;
-            next = threads.thread_blocklist[usize::from(n)];
+            next = *threads.thread_blocklist[usize::from(n)].acquire();
         }
-        threads.thread_blocklist[usize::from(pid)] = next;
+        *threads.thread_blocklist[usize::from(pid)].acquire_mut() = next;
         let inherit_priority = match curr {
             Some(curr) => {
-                threads.thread_blocklist[usize::from(curr)] = Some(pid);
+                *threads.thread_blocklist[usize::from(curr)].acquire_mut() = Some(pid);
                 None
             }
             _ => {
@@ -54,12 +59,14 @@ impl ThreadList {
     /// the scheduler.
     ///
     /// Returns the thread's [`ThreadId`] and its previous [`ThreadState`].
-    pub fn pop<T: DerefMut<Target = Threads>>(
+    pub fn pop<T: Deref<Target = Threads>>(
         &mut self,
-        threads: &mut T,
+        threads: &T,
     ) -> Option<(ThreadId, ThreadState)> {
         let head = self.head?;
-        self.head = threads.thread_blocklist[usize::from(head)].take();
+        self.head = threads.thread_blocklist[usize::from(head)]
+            .acquire_mut()
+            .take();
         let old_state = threads.set_state(head, ThreadState::Running);
         Some((head, old_state))
     }

@@ -28,19 +28,19 @@ impl<T: Copy + Send> Channel<T> {
     }
 
     pub fn send(&self, something: &T) {
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 ChannelState::Idle => {
                     let mut waiters = ThreadList::new();
                     waiters.put_current(
-                        &mut threads,
+                        &threads,
                         ThreadState::ChannelTxBlocked(something as *const T as usize),
                     );
                     *state = ChannelState::SendersWaiting(waiters);
                 }
                 ChannelState::ReceiversWaiting(waiters) => {
-                    if let Some((_, head_state)) = waiters.pop(&mut threads) {
+                    if let Some((_, head_state)) = waiters.pop(&threads) {
                         if waiters.is_empty() {
                             *state = ChannelState::Idle;
                         }
@@ -56,7 +56,7 @@ impl<T: Copy + Send> Channel<T> {
                 }
                 ChannelState::SendersWaiting(waiters) => {
                     waiters.put_current(
-                        &mut threads,
+                        &threads,
                         ThreadState::ChannelTxBlocked(self as *const _ as usize),
                     );
                 }
@@ -65,11 +65,11 @@ impl<T: Copy + Send> Channel<T> {
     }
 
     pub fn try_send(&self, something: &T) -> bool {
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 ChannelState::ReceiversWaiting(waiters) => {
-                    if let Some((_, head_state)) = waiters.pop(&mut threads) {
+                    if let Some((_, head_state)) = waiters.pop(&threads) {
                         if waiters.is_empty() {
                             *state = ChannelState::Idle;
                         }
@@ -92,21 +92,21 @@ impl<T: Copy + Send> Channel<T> {
     pub fn recv(&self) -> T {
         let mut res: MaybeUninit<T> = MaybeUninit::uninit();
 
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let state = unsafe { &mut *self.state.get() };
             let ptr = res.as_mut_ptr();
             match state {
                 ChannelState::Idle => {
                     let mut waiters = ThreadList::new();
-                    waiters.put_current(&mut threads, ThreadState::ChannelRxBlocked(ptr as usize));
+                    waiters.put_current(&threads, ThreadState::ChannelRxBlocked(ptr as usize));
                     *state = ChannelState::ReceiversWaiting(waiters);
                 }
                 ChannelState::ReceiversWaiting(waiters) => {
-                    waiters.put_current(&mut threads, ThreadState::ChannelRxBlocked(ptr as usize));
+                    waiters.put_current(&threads, ThreadState::ChannelRxBlocked(ptr as usize));
                     // sender will copy message
                 }
                 ChannelState::SendersWaiting(waiters) => {
-                    if let Some((_, head_state)) = waiters.pop(&mut threads) {
+                    if let Some((_, head_state)) = waiters.pop(&threads) {
                         if waiters.is_empty() {
                             *state = ChannelState::Idle;
                         }
@@ -132,12 +132,12 @@ impl<T: Copy + Send> Channel<T> {
 
     pub fn try_recv(&self) -> Option<T> {
         let mut res: MaybeUninit<T> = MaybeUninit::uninit();
-        let have_received = THREADS.with_mut(|mut threads| {
+        let have_received = THREADS.with_mut(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 ChannelState::SendersWaiting(waiters) => {
                     let ptr = res.as_mut_ptr();
-                    if let Some((_, head_state)) = waiters.pop(&mut threads) {
+                    if let Some((_, head_state)) = waiters.pop(&threads) {
                         if waiters.is_empty() {
                             *state = ChannelState::Idle;
                         }

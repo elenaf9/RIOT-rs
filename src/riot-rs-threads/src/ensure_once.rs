@@ -2,36 +2,27 @@
 //! at runtime that some reference is used only once.
 
 use crate::smp::no_preemption_with;
-use crate::sync::Spinlock;
 
 pub(crate) struct EnsureOnce<T> {
-    inner: Spinlock<T>,
+    inner: T,
 }
 
 impl<T> EnsureOnce<T> {
     pub const fn new(inner: T) -> Self {
-        Self {
-            inner: Spinlock::new(inner),
-        }
+        Self { inner }
     }
 
     pub fn with<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&T) -> R,
     {
-        no_preemption_with(|| {
-            let inner = self.inner.acquire();
-            f(&inner)
-        })
+        no_preemption_with(|| f(&self.inner))
     }
 
     pub fn with_mut<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&mut T) -> R,
+        F: FnOnce(&T) -> R,
     {
-        no_preemption_with(|| {
-            let mut inner = self.inner.acquire_mut();
-            f(&mut inner)
-        })
+        no_preemption_with(|| f(&self.inner))
     }
 }

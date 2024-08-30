@@ -77,7 +77,7 @@ pub fn wait_one(mask: ThreadFlags) -> ThreadFlags {
 /// Panics if this is called outside of a thread context.
 pub fn clear(mask: ThreadFlags) -> ThreadFlags {
     THREADS.with_mut(|threads| {
-        let thread = threads.current().unwrap();
+        let mut thread = threads.current().unwrap();
         let res = thread.flags & mask;
         thread.flags &= !mask;
         res
@@ -96,44 +96,47 @@ pub fn get() -> ThreadFlags {
 
 impl Threads {
     // thread flags implementation
-    fn flag_set(&mut self, thread_id: ThreadId, mask: ThreadFlags) {
-        let thread = self.get_unchecked_mut(thread_id);
+    fn flag_set(&self, thread_id: ThreadId, mask: ThreadFlags) {
+        let mut thread = self.get_unchecked_mut(thread_id);
         thread.flags |= mask;
         match thread.state {
             ThreadState::FlagBlocked(WaitMode::Any(bits)) if thread.flags & bits != 0 => {}
             ThreadState::FlagBlocked(WaitMode::All(bits)) if thread.flags & bits == bits => {}
             _ => return,
         };
+        drop(thread);
         self.set_state(thread_id, ThreadState::Running);
     }
 
-    fn flag_wait_all(&mut self, mask: ThreadFlags) -> Option<ThreadFlags> {
-        let thread = self.current().unwrap();
+    fn flag_wait_all(&self, mask: ThreadFlags) -> Option<ThreadFlags> {
+        let mut thread = self.current().unwrap();
         if thread.flags & mask == mask {
             thread.flags &= !mask;
             Some(mask)
         } else {
             let thread_id = thread.pid;
+            drop(thread);
             self.set_state(thread_id, ThreadState::FlagBlocked(WaitMode::All(mask)));
             None
         }
     }
 
-    fn flag_wait_any(&mut self, mask: ThreadFlags) -> Option<ThreadFlags> {
-        let thread = self.current().unwrap();
+    fn flag_wait_any(&self, mask: ThreadFlags) -> Option<ThreadFlags> {
+        let mut thread = self.current().unwrap();
         if thread.flags & mask != 0 {
             let res = thread.flags & mask;
             thread.flags &= !res;
             Some(res)
         } else {
             let thread_id = thread.pid;
+            drop(thread);
             self.set_state(thread_id, ThreadState::FlagBlocked(WaitMode::Any(mask)));
             None
         }
     }
 
-    fn flag_wait_one(&mut self, mask: ThreadFlags) -> Option<ThreadFlags> {
-        let thread = self.current().unwrap();
+    fn flag_wait_one(&self, mask: ThreadFlags) -> Option<ThreadFlags> {
+        let mut thread = self.current().unwrap();
         if thread.flags & mask != 0 {
             let mut res = thread.flags & mask;
             // clear all but least significant bit
@@ -142,6 +145,7 @@ impl Threads {
             Some(res)
         } else {
             let thread_id = thread.pid;
+            drop(thread);
             self.set_state(thread_id, ThreadState::FlagBlocked(WaitMode::Any(mask)));
             None
         }

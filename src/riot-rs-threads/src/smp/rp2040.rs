@@ -56,9 +56,8 @@ impl Multicore for Chip {
     }
 
     fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R {
-        internal_preemption_lock::with(f) 
+        internal_preemption_lock::with(f)
     }
-    
 }
 
 const SCHEDULE_TOKEN: u32 = 0x111;
@@ -176,6 +175,6 @@ mod internal_preemption_lock {
         let interrupts_enabled = unsafe { disable_interrupts() };
         let _guard = Guard { interrupts_enabled };
 
-        unsafe { f() }
+        f()
     }
 }

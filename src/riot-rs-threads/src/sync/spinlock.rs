@@ -98,34 +98,72 @@ impl<T> Spinlock<T> {
     ///
     /// **NOTE**: must not be called outside thread context!
     pub fn acquire(&self) -> SpinlockGuard<T> {
-        while crate::cs_with(|cs| {
+        while !crate::cs_with(|cs| {
             let mut state = self.state.borrow(cs).borrow_mut();
             match *state {
                 LockState::Unlocked => {
                     *state = LockState::Locked(1);
-                    false
+                    true
                 }
                 LockState::Locked(ref mut count) => {
                     *count += 1;
-                    false
+                    true
                 }
-                _ => true,
+                _ => false,
             }
         }) {}
         SpinlockGuard { lock: &self }
     }
 
     pub fn acquire_mut(&self) -> SpinlockGuardMut<T> {
-        while crate::cs_with(|cs| {
+        while !crate::cs_with(|cs| {
             let mut state = self.state.borrow(cs).borrow_mut();
             if *state == LockState::Unlocked {
                 *state = LockState::LockedMut;
-                false
-            } else {
                 true
+            } else {
+                false
             }
         }) {}
         SpinlockGuardMut { lock: &self }
+    }
+
+    /// Get this spinlock (blocking)
+    ///
+    /// If the spinlock was unlocked, it will be locked and the function returns.
+    /// If the spinlock was locked, this function will unschedule the current thread until the
+    /// spinlock gets unlocked elsewhere.
+    ///
+    /// **NOTE**: must not be called outside thread context!
+    pub fn try_acquire(&self) -> Option<SpinlockGuard<T>> {
+        crate::cs_with(|cs| {
+            let mut state = self.state.borrow(cs).borrow_mut();
+            match *state {
+                LockState::Unlocked => {
+                    *state = LockState::Locked(1);
+                    true
+                }
+                LockState::Locked(ref mut count) => {
+                    *count += 1;
+                    true
+                }
+                _ => false,
+            }
+        })
+        .then(|| SpinlockGuard { lock: &self })
+    }
+
+    pub fn try_acquire_mut(&self) -> Option<SpinlockGuardMut<T>> {
+        crate::cs_with(|cs| {
+            let mut state = self.state.borrow(cs).borrow_mut();
+            if *state == LockState::Unlocked {
+                *state = LockState::LockedMut;
+                true
+            } else {
+                false
+            }
+        })
+        .then(|| SpinlockGuardMut { lock: &self })
     }
 
     /// Releases the spinlock.
