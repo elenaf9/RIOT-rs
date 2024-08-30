@@ -374,7 +374,7 @@ pub unsafe fn thread_create_raw(
     prio: u8,
     core_affinity: Option<CoreAffinity>,
 ) -> ThreadId {
-    THREADS.with_mut(|mut threads| {
+    THREADS.with_mut(|threads| {
         let prio = RunqueueId::new(prio);
         let thread = threads.create(func, arg, stack, prio, core_affinity);
         let thread_id = thread.unwrap().pid;
@@ -418,7 +418,7 @@ fn cleanup() -> ! {
 
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
-    if THREADS.with_mut(|mut threads| {
+    if THREADS.with_mut(|threads| {
         let Some(rq) = threads.current().map(|t| t.prio) else {
             return false;
         };
@@ -430,7 +430,7 @@ pub fn yield_same() {
 
 /// Suspends/ pauses the current thread's execution.
 pub fn sleep() {
-    THREADS.with_mut(|mut threads| {
+    THREADS.with_mut(|threads| {
         let pid = threads.current_pid().unwrap();
         threads.set_state(pid, ThreadState::Paused);
     });
@@ -440,7 +440,7 @@ pub fn sleep() {
 ///
 /// Returns `false` if no paused thread exists for `thread_id`.
 pub fn wakeup(thread_id: ThreadId) -> bool {
-    THREADS.with_mut(|mut threads| {
+    THREADS.with_mut(|threads| {
         if usize::from(thread_id) >= THREADS_NUMOF {
             return false;
         }
@@ -464,7 +464,7 @@ pub fn get_priority(thread_id: ThreadId) -> Option<u8> {
 ///
 /// This might trigger a context switch.
 pub fn set_priority(thread_id: ThreadId, prio: u8) {
-    THREADS.with_mut(|mut threads| threads.set_priority(thread_id, RunqueueId::new(prio)))
+    THREADS.with_mut(|threads| threads.set_priority(thread_id, RunqueueId::new(prio)))
 }
 
 /// Returns the size of the internal structure that holds the

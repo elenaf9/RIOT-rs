@@ -1,4 +1,4 @@
-use core::cell::RefMut;
+use core::ops::DerefMut;
 
 use crate::{thread::Thread, RunqueueId, ThreadId, ThreadState, Threads};
 
@@ -18,9 +18,9 @@ impl ThreadList {
     /// Puts the current (blocked) thread into this [`ThreadList`] and triggers the scheduler.
     ///
     /// Returns a `RunqueueId` if the highest priority among the waiters in the list has changed.
-    pub fn put_current(
+    pub fn put_current<T: DerefMut<Target = Threads>>(
         &mut self,
-        threads: &mut RefMut<Threads>,
+        threads: &mut T,
         state: ThreadState,
     ) -> Option<RunqueueId> {
         let &mut Thread { pid, prio, .. } = threads.current().unwrap();
@@ -54,7 +54,10 @@ impl ThreadList {
     /// the scheduler.
     ///
     /// Returns the thread's [`ThreadId`] and its previous [`ThreadState`].
-    pub fn pop(&mut self, threads: &mut RefMut<Threads>) -> Option<(ThreadId, ThreadState)> {
+    pub fn pop<T: DerefMut<Target = Threads>>(
+        &mut self,
+        threads: &mut T,
+    ) -> Option<(ThreadId, ThreadState)> {
         let head = self.head?;
         self.head = threads.thread_blocklist[usize::from(head)].take();
         let old_state = threads.set_state(head, ThreadState::Running);

@@ -87,7 +87,7 @@ impl Lock {
     /// If the lock was locked by another thread, the function returns false.
     /// If the lock is already locked by the current thread, the function returns true.
     pub fn try_acquire(&self) -> bool {
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let Thread { pid, prio, .. } = threads.current().unwrap();
             let state = unsafe { &mut *self.state.get() };
             match state {

@@ -151,3 +151,5 @@ impl Default for Spinlock<()> {
         Self::new(())
     }
 }
+
+unsafe impl<T> Sync for Spinlock<T> {}

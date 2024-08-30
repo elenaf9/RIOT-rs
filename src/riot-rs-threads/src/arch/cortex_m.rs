@@ -187,7 +187,7 @@ unsafe extern "C" fn PendSV() {
 /// This function is called in PendSV.
 #[no_mangle]
 unsafe fn sched(old_sp: u32) -> u32 {
-    THREADS.with_mut(|mut threads| {
+    THREADS.with_mut(|threads| {
         if let Some(current_pid) = threads.current_pid() {
             let thread = threads.get_unchecked_mut(current_pid);
             thread.sp = old_sp as usize;
@@ -198,7 +198,7 @@ unsafe fn sched(old_sp: u32) -> u32 {
         }
     });
     loop {
-        if let Some(res) = THREADS.with_mut(|mut threads| {
+        if let Some(res) = THREADS.with_mut(|threads| {
             #[cfg(not(feature = "core-affinity"))]
             let next_pid = threads.runqueue.pop_next()?;
             #[cfg(feature = "core-affinity")]
