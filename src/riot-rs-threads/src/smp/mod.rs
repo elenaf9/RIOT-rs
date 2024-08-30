@@ -38,19 +38,21 @@ pub trait Multicore {
     /// Triggers the scheduler on core `id`.
     fn schedule_on_core(id: CoreId);
 
-    /// Executes a function inside a critical section.
+    /// Disables preemption while the function is being executed.
+    fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R;
+
+    /// Implement a multicore lock for mutual exclusion on both cores.
     ///
-    /// Mutual exclusion with `critical_section::with` is not guaranteed.
-    /// The implementation may use `critical_section::with`, but can also be
-    /// independent.
-    fn critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R;
+    /// Must be called inside a section where preemption is already disabled, i.e. inside
+    /// a [`Self::no_preemption_with`] closure.
+    fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R;
 }
 
 cfg_if::cfg_if! {
-    if #[cfg(context = "rp2040")] {
+    if #[cfg(all(feature = "multi-core", context = "rp2040"))] {
         mod rp2040;
         pub use rp2040::Chip;
-    } else if #[cfg(context = "esp32s3")] {
+    } else if #[cfg(all(feature = "multi-core", context = "esp32s3"))] {
         mod esp32s3;
         pub use esp32s3::Chip;
     }
@@ -70,8 +72,13 @@ cfg_if::cfg_if! {
             fn schedule_on_core(_id: CoreId) {
                 Cpu::schedule();
             }
-            fn critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
-                critical_section::with(f)
+
+            fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R{
+                critical_section::with(|cs| f())
+            }
+
+            fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+                unsafe { f(CriticalSection::new()) }
             }
         }
     }
@@ -83,10 +90,11 @@ cfg_if::cfg_if! {
 /// The implementation may use `critical_section::with`, but can also be
 /// independent.
 pub fn critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
-    Chip::critical_section_with(f)
+    Chip::no_preemption_with(|| Chip::multicore_lock_with(f))
 }
 
 /// Triggers the scheduler on core `id`.
+#[cfg(feature = "multi-core")]
 pub fn schedule_on_core(id: CoreId) {
     Chip::schedule_on_core(id)
 }

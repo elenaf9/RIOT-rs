@@ -5,7 +5,6 @@ use esp_hal::{
     peripherals::{Interrupt, CPU_CTRL, SYSTEM},
     Cpu,
 };
-
 use static_cell::ConstStaticCell;
 
 use super::{CoreId, Multicore, ISR_STACKSIZE_CORE1};
@@ -88,25 +87,53 @@ impl Multicore for Chip {
         };
     }
 
-    fn critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+    fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R {
+        let _guard = preemption::disable();
+        f()
+    }
+
+    fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
         let _guard = internal_critical_section::acquire();
         unsafe { f(CriticalSection::new()) }
     }
 }
+
 mod internal_critical_section {
     use core::sync::atomic::{AtomicUsize, Ordering};
 
     static MULTICORE_LOCK: AtomicUsize = AtomicUsize::new(0);
 
-    pub struct Guard {
-        tkn: u32,
-    }
+    pub struct Guard;
 
     impl Guard {
         fn release(&mut self) {
             MULTICORE_LOCK.store(0, Ordering::Relaxed);
             // Ensure the compiler doesn't re-order accesses and violate safety here
             core::sync::atomic::compiler_fence(Ordering::Release);
+        }
+    }
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            self.release()
+        }
+    }
+
+    pub fn acquire() -> Guard {
+        // Ensure the compiler doesn't re-order accesses and violate safety here
+        core::sync::atomic::compiler_fence(Ordering::Acquire);
+        while MULTICORE_LOCK.swap(1, Ordering::Relaxed) > 0 {}
+        Guard
+    }
+}
+
+mod preemption {
+    pub struct Guard {
+        tkn: u32,
+    }
+
+    impl Guard {
+        fn enable(&mut self) {
             // Copied from `esp_hal::critical_section_impl::xtensa::release`
             const RESERVED_MASK: u32 = 0b1111_1111_1111_1000_1111_0000_0000_0000;
             debug_assert!(self.tkn & RESERVED_MASK == 0);
@@ -120,19 +147,15 @@ mod internal_critical_section {
 
     impl Drop for Guard {
         fn drop(&mut self) {
-            self.release()
+            self.enable()
         }
     }
 
-    pub fn acquire() -> Guard {
+    pub fn disable() -> Guard {
         let mut tkn: u32;
         unsafe {
             core::arch::asm!("rsil {0}, 5", out(reg) tkn);
         }
-        // Ensure the compiler doesn't re-order accesses and violate safety here
-        core::sync::atomic::compiler_fence(Ordering::Acquire);
-        while MULTICORE_LOCK.swap(1, Ordering::Relaxed) > 0 {}
-
         Guard { tkn }
     }
 }

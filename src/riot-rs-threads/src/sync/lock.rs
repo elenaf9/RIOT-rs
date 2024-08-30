@@ -1,7 +1,7 @@
 //! This module provides a Lock implementation.
 use core::cell::UnsafeCell;
 
-use crate::{threadlist::ThreadList, ThreadState, critical_section_with};
+use crate::{critical_section_with, threadlist::ThreadList, ThreadState};
 
 /// A basic locking object.
 ///
