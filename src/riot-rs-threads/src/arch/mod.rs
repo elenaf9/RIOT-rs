@@ -1,5 +1,3 @@
-use core::ops::DerefMut;
-
 use crate::Thread;
 
 /// Arch-specific implementations for the scheduler.
@@ -17,12 +15,7 @@ pub trait Arch {
     /// it starts executing `func` with argument `arg`.
     /// Furthermore, it sets up the link-register with the [`crate::cleanup`] function that
     /// will be executed after the thread function returned.
-    fn setup_stack<T: DerefMut<Target = Thread>>(
-        thread: T,
-        stack: &mut [u8],
-        func: usize,
-        arg: usize,
-    );
+    fn setup_stack(thread: &mut Thread, stack: &mut [u8], func: usize, arg: usize);
 
     /// Trigger a context switch.
     fn schedule();
@@ -48,7 +41,7 @@ cfg_if::cfg_if! {
             type ThreadData = ();
             const DEFAULT_THREAD_DATA: Self::ThreadData = ();
 
-            fn setup_stack<T: DerefMut<Target = Thread>>( _: T, _: &mut [u8], _: usize, _: usize) {
+            fn setup_stack( _: &mut Thread, _: &mut [u8], _: usize, _: usize) {
                 unimplemented!()
             }
             fn start_threading() {

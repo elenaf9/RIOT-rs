@@ -57,9 +57,7 @@ impl Lock {
     /// **NOTE**: must not be called outside thread context!
     pub fn acquire(&self) {
         THREADS.with_mut(|threads| {
-            let thread = threads.current().unwrap();
-            let (pid, prio) = (thread.pid, thread.prio);
-            drop(thread);
+            let (pid, prio) = threads.current_pid_prio().unwrap();
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {
@@ -94,9 +92,7 @@ impl Lock {
     /// If the lock is already locked by the current thread, the function returns true.
     pub fn try_acquire(&self) -> bool {
         THREADS.with_mut(|threads| {
-            let thread = threads.current().unwrap();
-            let (pid, prio) = (thread.pid, thread.prio);
-            drop(thread);
+            let (pid, prio) = threads.current_pid_prio().unwrap();
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {

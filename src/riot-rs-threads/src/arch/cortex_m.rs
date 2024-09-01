@@ -1,4 +1,4 @@
-use core::{arch::asm, ops::DerefMut, ptr::write_volatile};
+use core::{arch::asm, ptr::write_volatile};
 
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
 
@@ -28,12 +28,7 @@ impl Arch for Cpu {
     /// |   PC    |
     /// |   PSR   |
     /// +---------+
-    fn setup_stack<T: DerefMut<Target = Thread>>(
-        mut thread: T,
-        stack: &mut [u8],
-        func: usize,
-        arg: usize,
-    ) {
+    fn setup_stack(thread: &mut Thread, stack: &mut [u8], func: usize, arg: usize) {
         let stack_start = stack.as_ptr() as usize;
 
         // 1. The stack starts at the highest address and grows downwards.
@@ -193,39 +188,49 @@ unsafe extern "C" fn PendSV() {
 #[no_mangle]
 unsafe fn sched(old_sp: u32) -> u32 {
     THREADS.with_mut(|threads| {
-        if let Some(current_pid) = threads.current_pid() {
-            let mut thread = threads.get_unchecked_mut(current_pid);
+        if let Some((pid, prio)) = threads.current_with(|current| {
+            let thread = current?;
             thread.sp = old_sp as usize;
             if thread.state == ThreadState::Running {
-                threads.runqueue.acquire_mut().add(current_pid, thread.prio);
+                Some((thread.pid, thread.prio))
+            } else {
+                None
             }
+        }) {
+            threads.runqueue.with(|rq| rq.add(pid, prio))
         }
     });
     loop {
         if let Some(res) = THREADS.with_mut(|threads| {
-            let mut runqueue = threads.runqueue.acquire_mut();
-            #[cfg(not(feature = "core-affinity"))]
-            let next_pid = runqueue.pop_next()?;
-            #[cfg(feature = "core-affinity")]
-            let next_pid = {
-                let (mut next, prio) = runqueue.peek_next()?;
-                if !threads.is_affine_to_curr_core(next) {
-                    let iter = runqueue.iter_from(next, prio);
-                    next = iter
-                        .filter(|pid| threads.is_affine_to_curr_core(*pid))
-                        .next()?;
-                }
-                runqueue.del(next);
-                next
-            };
-            drop(runqueue);
+            let next_pid = crate::cs_with(|cs| {
+                threads.runqueue.with_cs(cs, |rq| {
+                    #[cfg(not(feature = "core-affinity"))]
+                    {
+                        rq.pop_next()
+                    }
+                    #[cfg(feature = "core-affinity")]
+                    {
+                        let (mut next, prio) = rq.peek_next()?;
+                        if !threads.is_affine_to_curr_core(cs, next) {
+                            let iter = rq.iter_from(next, prio);
+                            next = iter
+                                .filter(|pid| threads.is_affine_to_curr_core(cs, *pid))
+                                .next()?;
+                        }
+                        rq.del(next);
+                        Some(next)
+                    }
+                })
+            })?;
             if Some(next_pid) == threads.current_pid() {
                 return Some(0);
             }
-            let thread = threads.get_unchecked(next_pid);
-            threads.set_current(next_pid, thread.prio);
+            let (prio, sp) = threads.get_unchecked_with(next_pid, |t| (t.prio, t.sp));
+            threads
+                .current_threads
+                .with(|ct| ct[usize::from(crate::core_id())] = Some((next_pid, prio)));
 
-            Some(thread.sp as u32)
+            Some(sp as u32)
         }) {
             break res;
         }

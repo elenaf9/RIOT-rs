@@ -23,25 +23,25 @@ impl ThreadList {
         threads: &T,
         state: ThreadState,
     ) -> Option<RunqueueId> {
-        let thread = threads.current().unwrap();
-        let prio = thread.prio;
-        let pid = thread.pid;
-        drop(thread);
+        let (pid, prio) = threads.current_pid_prio().unwrap();
         let mut curr = None;
         let mut next = self.head;
         while let Some(n) = next {
-            let thread_b = threads.get_unchecked(n);
-            if thread_b.prio < prio {
+            let thread_b_prio = threads.get_unchecked_with(n, |t| t.prio);
+            if thread_b_prio < prio {
                 break;
             }
-            drop(thread_b);
             curr = next;
-            next = *threads.thread_blocklist[usize::from(n)].acquire();
+            next = threads.thread_blocklist.with(|l| l[usize::from(n)]);
         }
-        *threads.thread_blocklist[usize::from(pid)].acquire_mut() = next;
+        threads
+            .thread_blocklist
+            .with(|l| l[usize::from(pid)] = next);
         let inherit_priority = match curr {
             Some(curr) => {
-                *threads.thread_blocklist[usize::from(curr)].acquire_mut() = Some(pid);
+                threads
+                    .thread_blocklist
+                    .with(|l| l[usize::from(curr)] = Some(pid));
                 None
             }
             _ => {
@@ -64,9 +64,7 @@ impl ThreadList {
         threads: &T,
     ) -> Option<(ThreadId, ThreadState)> {
         let head = self.head?;
-        self.head = threads.thread_blocklist[usize::from(head)]
-            .acquire_mut()
-            .take();
+        self.head = threads.thread_blocklist.with(|l| l[usize::from(head)]);
         let old_state = threads.set_state(head, ThreadState::Running);
         Some((head, old_state))
     }
