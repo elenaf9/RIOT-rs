@@ -197,12 +197,12 @@ unsafe fn sched(old_sp: u32) -> u32 {
                 None
             }
         }) {
-            threads.runqueue_with(|rq| rq.add(pid, prio))
+            threads.runqueue.with(|rq| rq.add(pid, prio))
         }
     });
     loop {
         if let Some(res) = THREADS.with(|threads| {
-            let next_pid = threads.runqueue_with(|rq| {
+            let next_pid = threads.runqueue.with(|rq| {
                 #[cfg(not(feature = "core-affinity"))]
                 {
                     rq.pop_next()
@@ -224,9 +224,9 @@ unsafe fn sched(old_sp: u32) -> u32 {
                 return Some(0);
             }
             let (prio, sp) = threads.get_unchecked_with(next_pid, |t| (t.prio, t.sp));
-            threads.current_threads_with(|ct| {
-                ct[usize::from(crate::core_id())] = Some((next_pid, prio))
-            });
+            threads
+                .current_threads
+                .with(|ct| ct[usize::from(crate::core_id())] = Some((next_pid, prio)));
 
             Some(sp as u32)
         }) {

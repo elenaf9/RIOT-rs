@@ -58,7 +58,7 @@ pub trait Multicore {
 
     fn schedule_on_core(id: CoreId);
 
-    fn cs_with<R>(id: usize, f: impl FnOnce(CriticalSection<'_>) -> R) -> R;
+    fn cs_with<const ID: usize, R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R;
 
     fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R;
 }
@@ -91,7 +91,7 @@ cfg_if::cfg_if! {
                 Cpu::schedule();
             }
 
-            fn cs_with<R>(_: usize, f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+            fn cs_with<const ID: usize, R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
                 unsafe  { f(CriticalSection::new()) }
             }
 
@@ -107,18 +107,18 @@ pub fn schedule_on_core(id: CoreId) {
 }
 
 pub fn global_cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
-    no_preemption_with(|| Chip::cs_with(0, f))
+    no_preemption_with(|| Chip::cs_with::<0, _>(f))
 }
 
 pub fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R {
     Chip::no_preemption_with(f)
 }
 
-pub struct MulticoreLock<T> {
+pub struct MulticoreLock<const N: usize, T> {
     inner: UnsafeCell<T>,
 }
 
-impl<T> MulticoreLock<T> {
+impl<const N: usize, T> MulticoreLock<N, T> {
     /// Creates new **unlocked** Spinlock
     pub const fn new(inner: T) -> Self {
         Self {
@@ -126,11 +126,11 @@ impl<T> MulticoreLock<T> {
         }
     }
 
-    pub fn with<F, R>(&self, id: usize, f: F) -> R
+    pub fn with<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {
-        Chip::cs_with(id, |cs| self.with_cs(cs, f))
+        Chip::cs_with::<N, _>(|cs| self.with_cs(cs, f))
     }
 
     pub fn with_cs<F, R>(&self, _: CriticalSection, f: F) -> R
@@ -142,4 +142,4 @@ impl<T> MulticoreLock<T> {
     }
 }
 
-unsafe impl<T> Sync for MulticoreLock<T> {}
+unsafe impl<const N: usize, T> Sync for MulticoreLock<N, T> {}

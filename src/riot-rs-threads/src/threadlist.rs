@@ -32,12 +32,16 @@ impl ThreadList {
                 break;
             }
             curr = next;
-            next = threads.thread_blocklist_with(|l| l[usize::from(n)]);
+            next = threads.thread_blocklist.with(|l| l[usize::from(n)]);
         }
-        threads.thread_blocklist_with(|l| l[usize::from(pid)] = next);
+        threads
+            .thread_blocklist
+            .with(|l| l[usize::from(pid)] = next);
         let inherit_priority = match curr {
             Some(curr) => {
-                threads.thread_blocklist_with(|l| l[usize::from(curr)] = Some(pid));
+                threads
+                    .thread_blocklist
+                    .with(|l| l[usize::from(curr)] = Some(pid));
                 None
             }
             _ => {
@@ -60,7 +64,7 @@ impl ThreadList {
         threads: &T,
     ) -> Option<(ThreadId, ThreadState)> {
         let head = self.head?;
-        self.head = threads.thread_blocklist_with(|l| l[usize::from(head)]);
+        self.head = threads.thread_blocklist.with(|l| l[usize::from(head)]);
         let old_state = threads.set_state(head, ThreadState::Running);
         Some((head, old_state))
     }
