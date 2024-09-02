@@ -127,7 +127,7 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 /// context switching.
 unsafe fn sched(trap_frame: &mut TrapFrame) {
     loop {
-        if THREADS.with_mut(|threads| {
+        if THREADS.with(|threads| {
             let next_pid = match threads.runqueue.get_next() {
                 Some(pid) => pid,
                 None => {

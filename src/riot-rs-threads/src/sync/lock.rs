@@ -41,7 +41,7 @@ impl Lock {
     ///
     /// true if locked, false otherwise
     pub fn is_locked(&self) -> bool {
-        crate::cs_with(|_| {
+        crate::global_cs_with(|_| {
             let state = unsafe { &*self.state.get() };
             !matches!(state, LockState::Unlocked)
         })
@@ -56,7 +56,7 @@ impl Lock {
     ///
     /// **NOTE**: must not be called outside thread context!
     pub fn acquire(&self) {
-        THREADS.with_mut(|threads| {
+        THREADS.with(|threads| {
             let (pid, prio) = threads.current_pid_prio().unwrap();
             let state = unsafe { &mut *self.state.get() };
             match state {
@@ -91,7 +91,7 @@ impl Lock {
     /// If the lock was locked by another thread, the function returns false.
     /// If the lock is already locked by the current thread, the function returns true.
     pub fn try_acquire(&self) -> bool {
-        THREADS.with_mut(|threads| {
+        THREADS.with(|threads| {
             let (pid, prio) = threads.current_pid_prio().unwrap();
             let state = unsafe { &mut *self.state.get() };
             match state {
@@ -117,7 +117,7 @@ impl Lock {
     /// If the lock was locked and there were no waiters, the lock will be unlocked.
     /// If the lock was not locked, the function just returns.
     pub fn release(&self) {
-        THREADS.with_mut(|threads| {
+        THREADS.with(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {}

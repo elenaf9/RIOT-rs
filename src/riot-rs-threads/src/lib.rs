@@ -26,7 +26,6 @@ pub mod macro_reexports {
 
 pub use riot_rs_runqueue::{RunqueueId, ThreadId};
 pub use smp::CoreId;
-use sync::Spinlock;
 pub use thread_flags as flags;
 
 #[cfg(feature = "core-affinity")]
@@ -36,11 +35,9 @@ pub use smp::CoreAffinity;
 pub use arch::schedule;
 
 use arch::{Arch, Cpu, ThreadData};
-#[cfg(feature = "core-affinity")]
-use critical_section::CriticalSection;
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::RunQueue;
-use smp::{cs_with, schedule_on_core, Multicore};
+use smp::{global_cs_with, schedule_on_core, Multicore, MulticoreLock};
 use thread::{Thread, ThreadState};
 
 #[cfg(not(feature = "core-affinity"))]
@@ -64,24 +61,48 @@ pub static THREAD_FNS: [ThreadFn] = [..];
 /// Struct holding all scheduler state
 struct Threads {
     /// Global thread runqueue.
-    runqueue: Spinlock<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>>,
+    runqueue: MulticoreLock<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>>,
     /// The actual TCBs.
-    threads: [Spinlock<Thread>; THREADS_NUMOF],
+    threads: [MulticoreLock<Thread>; THREADS_NUMOF],
     /// `Some` when a thread is blocking another thread due to conflicting
     /// resource access.
-    thread_blocklist: Spinlock<[Option<ThreadId>; THREADS_NUMOF]>,
+    thread_blocklist: MulticoreLock<[Option<ThreadId>; THREADS_NUMOF]>,
     /// The currently running thread.
-    current_threads: Spinlock<[Option<(ThreadId, RunqueueId)>; CORES_NUMOF]>,
+    current_threads: MulticoreLock<[Option<(ThreadId, RunqueueId)>; CORES_NUMOF]>,
 }
 
 impl Threads {
     const fn new() -> Self {
         Self {
-            runqueue: Spinlock::new(RunQueue::new()),
-            threads: [const { Spinlock::new(Thread::default()) }; THREADS_NUMOF],
-            thread_blocklist: Spinlock::new([const { None }; THREADS_NUMOF]),
-            current_threads: Spinlock::new([None; CORES_NUMOF]),
+            runqueue: MulticoreLock::new(RunQueue::new()),
+            current_threads: MulticoreLock::new([None; CORES_NUMOF]),
+            thread_blocklist: MulticoreLock::new([const { None }; THREADS_NUMOF]),
+            threads: [const { MulticoreLock::new(Thread::default()) }; THREADS_NUMOF],
         }
+    }
+
+    fn runqueue_with<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>) -> R,
+    {
+        let lock_id = 1 % smp::Chip::SPINLOCKS as usize;
+        self.runqueue.with(lock_id, f)
+    }
+
+    fn current_threads_with<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut [Option<(ThreadId, RunqueueId)>; CORES_NUMOF]) -> R,
+    {
+        let lock_id = 2 % smp::Chip::SPINLOCKS as usize;
+        self.current_threads.with(lock_id, f)
+    }
+
+    fn thread_blocklist_with<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut [Option<ThreadId>; THREADS_NUMOF]) -> R,
+    {
+        let lock_id = 3 % smp::Chip::SPINLOCKS as usize;
+        self.thread_blocklist.with(lock_id, f)
     }
 
     /// Provides mutable access to the current thread.
@@ -89,16 +110,12 @@ impl Threads {
     where
         F: FnOnce(Option<&mut Thread>) -> R,
     {
-        cs_with(|cs| {
-            let current = self
-                .current_threads
-                .with_cs(cs, |ct| ct[usize::from(core_id())]);
-            let pid = match current {
-                Some((pid, _)) => pid,
-                None => return f(None),
-            };
-            self.threads[usize::from(pid)].with_cs(cs, |thread| f(Some(thread)))
-        })
+        let current = self.current_threads_with(|ct| ct[usize::from(core_id())]);
+        let pid = match current {
+            Some((pid, _)) => pid,
+            None => return f(None),
+        };
+        self.threads[usize::from(pid)].with(lock_id(pid), |thread| f(Some(thread)))
     }
 
     fn current_pid(&self) -> Option<ThreadId> {
@@ -106,7 +123,7 @@ impl Threads {
     }
 
     fn current_pid_prio(&self) -> Option<(ThreadId, RunqueueId)> {
-        self.current_threads.with(|ct| ct[usize::from(core_id())])
+        self.current_threads_with(|ct| ct[usize::from(core_id())])
     }
 
     /// Creates a new thread.
@@ -122,9 +139,10 @@ impl Threads {
         prio: RunqueueId,
         _core_affinity: Option<CoreAffinity>,
     ) -> Option<ThreadId> {
-        self.get_unused_with(|thread| {
-            let thread = thread?;
+        let pid = self.get_unused()?;
+        self.get_unchecked_with(pid, |thread| {
             Cpu::setup_stack(thread, stack, func, arg);
+            thread.pid = pid;
             thread.prio = prio;
             #[cfg(feature = "core-affinity")]
             {
@@ -145,28 +163,17 @@ impl Threads {
     where
         F: FnOnce(&mut Thread) -> R,
     {
-        self.threads[usize::from(thread_id)].with(|thread| f(thread))
+        self.threads[usize::from(thread_id)].with(lock_id(thread_id), |thread| f(thread))
     }
 
     /// Returns an unused ThreadId / Thread slot.
-    fn get_unused_with<F, R>(&self, mut f: F) -> R
-    where
-        F: FnMut(Option<&mut Thread>) -> R,
-    {
-        cs_with(|cs| {
-            for i in 0..THREADS_NUMOF {
-                if let Some(res) = self.threads[i].with_cs(cs, |thread| {
-                    if thread.state == ThreadState::Invalid {
-                        thread.pid = ThreadId::new(i as u8);
-                        return Some(f(Some(thread)));
-                    }
-                    None
-                }) {
-                    return res;
-                }
+    fn get_unused(&self) -> Option<ThreadId> {
+        for i in 0..THREADS_NUMOF {
+            if self.threads[i].with(lock_id(i), |t| t.state) == ThreadState::Invalid {
+                return Some(ThreadId::new(i as u8));
             }
-            f(None)
-        })
+        }
+        None
     }
 
     /// Checks if a thread with valid state exists for this `thread_id`.
@@ -174,7 +181,9 @@ impl Threads {
         if usize::from(thread_id) >= THREADS_NUMOF {
             false
         } else {
-            self.threads[usize::from(thread_id)].with(|thread| thread.state != ThreadState::Invalid)
+            self.threads[usize::from(thread_id)].with(lock_id(thread_id), |thread| {
+                thread.state != ThreadState::Invalid
+            })
         }
     }
 
@@ -191,14 +200,14 @@ impl Threads {
         match (new_state, old_state) {
             (new, old) if new == old => {}
             (ThreadState::Running, ThreadState::Invalid) => {
-                self.runqueue.with(|rq| rq.add(pid, prio));
+                self.runqueue_with(|rq| rq.add(pid, prio));
                 // We are in the startup phase were all threads are created.
                 // Don't trigger the scheduler before `start_threading`.
                 // FIXME: threads aren't only created during startup, so
                 // we need to find another fix for thos.
             }
             (ThreadState::Running, _) => {
-                self.runqueue.with(|rq| rq.add(pid, prio));
+                self.runqueue_with(|rq| rq.add(pid, prio));
                 self.schedule_if_needed(pid, prio)
             }
             (_, ThreadState::Running) => schedule(),
@@ -237,13 +246,13 @@ impl Threads {
         }) else {
             return;
         };
-        let running_on_core = self.current_threads.with(|ct| {
+        let running_on_core = self.current_threads_with(|ct| {
             ct.iter()
                 .position(|t| t.is_some_and(|(pid, _)| pid == thread_id))
         });
 
         if running_on_core.is_none() {
-            self.runqueue.with(|rq| {
+            self.runqueue_with(|rq| {
                 rq.del(thread_id);
                 rq.add(thread_id, new_prio);
             });
@@ -274,7 +283,7 @@ impl Threads {
 
     #[cfg(not(feature = "core-affinity"))]
     fn lowest_running_prio(&self) -> (CoreId, RunqueueId) {
-        self.current_threads.with(|ct| {
+        self.current_threads_with(|ct| {
             ct.iter()
                 .enumerate()
                 .filter_map(|(core, thread)| {
@@ -288,7 +297,7 @@ impl Threads {
 
     #[cfg(feature = "core-affinity")]
     fn lowest_running_prio(&self, affinity: &CoreAffinity) -> (CoreId, RunqueueId) {
-        self.current_threads.with(|ct| {
+        self.current_threads_with(|ct| {
             ct.iter()
                 .enumerate()
                 .filter_map(|(core, thread)| {
@@ -305,8 +314,8 @@ impl Threads {
     }
 
     #[cfg(feature = "core-affinity")]
-    fn is_affine_to_curr_core(&self, cs: CriticalSection, pid: ThreadId) -> bool {
-        self.threads[usize::from(pid)].with_cs(cs, |t| t.core_affinity.contains(crate::core_id()))
+    fn is_affine_to_curr_core(&self, pid: ThreadId) -> bool {
+        self.get_unchecked_with(pid, |t| t.core_affinity.contains(crate::core_id()))
     }
 }
 
@@ -324,6 +333,22 @@ impl Threads {
 pub unsafe fn start_threading() {
     smp::Chip::startup_cores();
     Cpu::start_threading();
+}
+
+fn lock_id<ID: Into<usize>>(pid: ID) -> usize {
+    let offset = match smp::Chip::SPINLOCKS {
+        // Single MulticoreLock that is used for all shared objects.
+        1 => 0,
+        // Distribute among all available spinlocks apart from MulticoreLock 1, which is used
+        // as global critical section.
+        2..4 => 1,
+        // MulticoreLock 0 is reserved for our global section.
+        // Spinlocks 1-3 for runqueue, current_threads and blocklist.
+        // So distribute threads among spinlocks 4..smp::Chip::SPINLOCKS.
+        _ => 4,
+    };
+    let n_thread_spinlocks = smp::Chip::SPINLOCKS as usize - offset;
+    offset + (pid.into() % n_thread_spinlocks)
 }
 
 /// Trait for types that fit into a single register.
@@ -390,7 +415,7 @@ pub unsafe fn thread_create_raw(
     prio: u8,
     core_affinity: Option<CoreAffinity>,
 ) -> ThreadId {
-    THREADS.with_mut(|threads| {
+    THREADS.with(|threads| {
         let prio = RunqueueId::new(prio);
         let thread_id = threads
             .create(func, arg, stack, prio, core_affinity)
@@ -424,7 +449,7 @@ pub fn is_valid_pid(thread_id: ThreadId) -> bool {
 /// the thread function returns.
 #[allow(unused)]
 fn cleanup() -> ! {
-    THREADS.with_mut(|threads| {
+    THREADS.with(|threads| {
         let thread_id = threads.current_pid().unwrap();
         threads.set_state(thread_id, ThreadState::Invalid);
     });
@@ -434,11 +459,11 @@ fn cleanup() -> ! {
 
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
-    if THREADS.with_mut(|threads| {
+    if THREADS.with(|threads| {
         let Some(prio) = threads.current_with(|t| Some(t?.prio)) else {
             return false;
         };
-        threads.runqueue.with(|rq| !rq.is_empty(prio))
+        threads.runqueue_with(|rq| !rq.is_empty(prio))
     }) {
         schedule();
     }
@@ -446,7 +471,7 @@ pub fn yield_same() {
 
 /// Suspends/ pauses the current thread's execution.
 pub fn sleep() {
-    THREADS.with_mut(|threads| {
+    THREADS.with(|threads| {
         let pid = threads.current_pid().unwrap();
         threads.set_state(pid, ThreadState::Paused);
     });
@@ -456,7 +481,7 @@ pub fn sleep() {
 ///
 /// Returns `false` if no paused thread exists for `thread_id`.
 pub fn wakeup(thread_id: ThreadId) -> bool {
-    THREADS.with_mut(|threads| {
+    THREADS.with(|threads| {
         if usize::from(thread_id) >= THREADS_NUMOF {
             return false;
         }
@@ -472,14 +497,14 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
 ///
 /// Returns `None` if this is not a valid thread.
 pub fn get_priority(thread_id: ThreadId) -> Option<u8> {
-    THREADS.with_mut(|threads| threads.get_priority(thread_id).map(|rq| *rq))
+    THREADS.with(|threads| threads.get_priority(thread_id).map(|rq| *rq))
 }
 
 /// Change the priority of a thread.
 ///
 /// This might trigger a context switch.
 pub fn set_priority(thread_id: ThreadId, prio: u8) {
-    THREADS.with_mut(|threads| threads.set_priority(thread_id, RunqueueId::new(prio)))
+    THREADS.with(|threads| threads.set_priority(thread_id, RunqueueId::new(prio)))
 }
 
 /// Returns the size of the internal structure that holds the

@@ -21,7 +21,7 @@ pub enum WaitMode {
 ///
 /// Panics if `thread_id` is >= [`THREADS_NUMOF`](crate::THREADS_NUMOF).
 pub fn set(thread_id: ThreadId, mask: ThreadFlags) {
-    THREADS.with_mut(|threads| threads.flag_set(thread_id, mask))
+    THREADS.with(|threads| threads.flag_set(thread_id, mask))
 }
 
 /// Waits until all flags in `mask` are set for the current thread.
@@ -33,7 +33,7 @@ pub fn set(thread_id: ThreadId, mask: ThreadFlags) {
 /// Panics if this is called outside of a thread context.
 pub fn wait_all(mask: ThreadFlags) -> ThreadFlags {
     loop {
-        if let Some(flags) = THREADS.with_mut(|threads| threads.flag_wait_all(mask)) {
+        if let Some(flags) = THREADS.with(|threads| threads.flag_wait_all(mask)) {
             return flags;
         }
     }
@@ -48,7 +48,7 @@ pub fn wait_all(mask: ThreadFlags) -> ThreadFlags {
 /// Panics if this is called outside of a thread context.
 pub fn wait_any(mask: ThreadFlags) -> ThreadFlags {
     loop {
-        if let Some(flags) = THREADS.with_mut(|threads| threads.flag_wait_any(mask)) {
+        if let Some(flags) = THREADS.with(|threads| threads.flag_wait_any(mask)) {
             return flags;
         }
     }
@@ -64,7 +64,7 @@ pub fn wait_any(mask: ThreadFlags) -> ThreadFlags {
 /// Panics if this is called outside of a thread context.
 pub fn wait_one(mask: ThreadFlags) -> ThreadFlags {
     loop {
-        if let Some(flags) = THREADS.with_mut(|threads| threads.flag_wait_one(mask)) {
+        if let Some(flags) = THREADS.with(|threads| threads.flag_wait_one(mask)) {
             return flags;
         }
     }
@@ -76,7 +76,7 @@ pub fn wait_one(mask: ThreadFlags) -> ThreadFlags {
 ///
 /// Panics if this is called outside of a thread context.
 pub fn clear(mask: ThreadFlags) -> ThreadFlags {
-    THREADS.with_mut(|threads| {
+    THREADS.with(|threads| {
         threads.current_with(|thread| {
             let thread = thread.unwrap();
             let res = thread.flags & mask;
@@ -93,7 +93,7 @@ pub fn clear(mask: ThreadFlags) -> ThreadFlags {
 /// Panics if this is called outside of a thread context.
 pub fn get() -> ThreadFlags {
     // TODO: current() requires us to use mutable `threads` here
-    THREADS.with_mut(|threads| threads.current_with(|t| t.unwrap().flags))
+    THREADS.with(|threads| threads.current_with(|t| t.unwrap().flags))
 }
 
 impl Threads {

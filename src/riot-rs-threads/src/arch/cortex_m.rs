@@ -187,7 +187,7 @@ unsafe extern "C" fn PendSV() {
 /// This function is called in PendSV.
 #[no_mangle]
 unsafe fn sched(old_sp: u32) -> u32 {
-    THREADS.with_mut(|threads| {
+    THREADS.with(|threads| {
         if let Some((pid, prio)) = threads.current_with(|current| {
             let thread = current?;
             thread.sp = old_sp as usize;
@@ -197,38 +197,36 @@ unsafe fn sched(old_sp: u32) -> u32 {
                 None
             }
         }) {
-            threads.runqueue.with(|rq| rq.add(pid, prio))
+            threads.runqueue_with(|rq| rq.add(pid, prio))
         }
     });
     loop {
-        if let Some(res) = THREADS.with_mut(|threads| {
-            let next_pid = crate::cs_with(|cs| {
-                threads.runqueue.with_cs(cs, |rq| {
-                    #[cfg(not(feature = "core-affinity"))]
-                    {
-                        rq.pop_next()
+        if let Some(res) = THREADS.with(|threads| {
+            let next_pid = threads.runqueue_with(|rq| {
+                #[cfg(not(feature = "core-affinity"))]
+                {
+                    rq.pop_next()
+                }
+                #[cfg(feature = "core-affinity")]
+                {
+                    let (mut next, prio) = rq.peek_next()?;
+                    if !threads.is_affine_to_curr_core(next) {
+                        let iter = rq.iter_from(next, prio);
+                        next = iter
+                            .filter(|pid| threads.is_affine_to_curr_core(*pid))
+                            .next()?;
                     }
-                    #[cfg(feature = "core-affinity")]
-                    {
-                        let (mut next, prio) = rq.peek_next()?;
-                        if !threads.is_affine_to_curr_core(cs, next) {
-                            let iter = rq.iter_from(next, prio);
-                            next = iter
-                                .filter(|pid| threads.is_affine_to_curr_core(cs, *pid))
-                                .next()?;
-                        }
-                        rq.del(next);
-                        Some(next)
-                    }
-                })
+                    rq.del(next);
+                    Some(next)
+                }
             })?;
             if Some(next_pid) == threads.current_pid() {
                 return Some(0);
             }
             let (prio, sp) = threads.get_unchecked_with(next_pid, |t| (t.prio, t.sp));
-            threads
-                .current_threads
-                .with(|ct| ct[usize::from(crate::core_id())] = Some((next_pid, prio)));
+            threads.current_threads_with(|ct| {
+                ct[usize::from(crate::core_id())] = Some((next_pid, prio))
+            });
 
             Some(sp as u32)
         }) {

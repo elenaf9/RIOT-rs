@@ -1,3 +1,5 @@
+use core::cell::UnsafeCell;
+
 use critical_section::CriticalSection;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -45,6 +47,7 @@ impl Default for CoreAffinity {
 
 pub trait Multicore {
     const CORES: u32;
+    const SPINLOCKS: u8;
 
     fn core_id() -> CoreId;
 
@@ -55,7 +58,7 @@ pub trait Multicore {
 
     fn schedule_on_core(id: CoreId);
 
-    fn cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R;
+    fn cs_with<R>(id: usize, f: impl FnOnce(CriticalSection<'_>) -> R) -> R;
 
     fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R;
 }
@@ -68,9 +71,11 @@ cfg_if::cfg_if! {
     else {
         use crate::{Arch, Cpu};
 
+
         pub struct Chip;
         impl Multicore for Chip {
             const CORES: u32 = 1;
+            const SPINLOCKS: u8 = u8::MAX;
 
             fn core_id() -> CoreId {
                 CoreId(0)
@@ -86,8 +91,8 @@ cfg_if::cfg_if! {
                 Cpu::schedule();
             }
 
-            fn cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
-                critical_section::with(f)
+            fn cs_with<R>(_: usize, f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+                unsafe  { f(CriticalSection::new()) }
             }
 
             fn no_preemption_with<R>(f: impl FnOnce() -> R ) -> R {
@@ -101,10 +106,40 @@ pub fn schedule_on_core(id: CoreId) {
     Chip::schedule_on_core(id)
 }
 
-pub fn cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
-    Chip::cs_with(f)
+pub fn global_cs_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+    no_preemption_with(|| Chip::cs_with(0, f))
 }
 
 pub fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R {
     Chip::no_preemption_with(f)
 }
+
+pub struct MulticoreLock<T> {
+    inner: UnsafeCell<T>,
+}
+
+impl<T> MulticoreLock<T> {
+    /// Creates new **unlocked** Spinlock
+    pub const fn new(inner: T) -> Self {
+        Self {
+            inner: UnsafeCell::new(inner),
+        }
+    }
+
+    pub fn with<F, R>(&self, id: usize, f: F) -> R
+    where
+        F: FnOnce(&mut T) -> R,
+    {
+        Chip::cs_with(id, |cs| self.with_cs(cs, f))
+    }
+
+    pub fn with_cs<F, R>(&self, _: CriticalSection, f: F) -> R
+    where
+        F: FnOnce(&mut T) -> R,
+    {
+        let inner = unsafe { &mut *self.inner.get() };
+        f(inner)
+    }
+}
+
+unsafe impl<T> Sync for MulticoreLock<T> {}

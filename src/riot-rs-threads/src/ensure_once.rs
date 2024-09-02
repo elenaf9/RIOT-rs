@@ -1,5 +1,5 @@
-//! This module provides a Spinlock-based wrapper that ensures
-//! at runtime that some reference is used only once.
+//! This module provides a Wrapper that ensures that the accessing thread
+//! is not preempted while access the inner object.
 
 use crate::smp::no_preemption_with;
 
@@ -13,13 +13,6 @@ impl<T> EnsureOnce<T> {
     }
 
     pub fn with<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
-        no_preemption_with(|| f(&self.inner))
-    }
-
-    pub fn with_mut<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&T) -> R,
     {

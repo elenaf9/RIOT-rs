@@ -28,7 +28,7 @@ impl<T: Copy + Send> Channel<T> {
     }
 
     pub fn send(&self, something: &T) {
-        THREADS.with_mut(|threads| {
+        THREADS.with(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 ChannelState::Idle => {
@@ -65,7 +65,7 @@ impl<T: Copy + Send> Channel<T> {
     }
 
     pub fn try_send(&self, something: &T) -> bool {
-        THREADS.with_mut(|threads| {
+        THREADS.with(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 ChannelState::ReceiversWaiting(waiters) => {
@@ -92,7 +92,7 @@ impl<T: Copy + Send> Channel<T> {
     pub fn recv(&self) -> T {
         let mut res: MaybeUninit<T> = MaybeUninit::uninit();
 
-        THREADS.with_mut(|threads| {
+        THREADS.with(|threads| {
             let state = unsafe { &mut *self.state.get() };
             let ptr = res.as_mut_ptr();
             match state {
@@ -132,7 +132,7 @@ impl<T: Copy + Send> Channel<T> {
 
     pub fn try_recv(&self) -> Option<T> {
         let mut res: MaybeUninit<T> = MaybeUninit::uninit();
-        let have_received = THREADS.with_mut(|threads| {
+        let have_received = THREADS.with(|threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 ChannelState::SendersWaiting(waiters) => {
