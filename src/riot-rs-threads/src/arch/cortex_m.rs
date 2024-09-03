@@ -2,7 +2,7 @@ use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
 
-use crate::{cleanup, Arch, Thread, ThreadState, THREADS};
+use crate::{cleanup, Arch, Thread, THREADS};
 
 #[cfg(not(any(armv6m, armv7m, armv8m)))]
 compile_error!("no supported ARM variant selected");
@@ -177,13 +177,14 @@ unsafe extern "C" fn PendSV() {
 /// - `r0`: 0 if the next thread in the runqueue is the currently running thread, else the SP of the next thread.
 ///
 /// This function is called in PendSV.
+#[cfg(feature = "multicore")]
 #[no_mangle]
 unsafe fn sched(old_sp: u32) -> u32 {
     THREADS.with_mut(|mut threads| {
         if let Some(current_pid) = threads.current_pid() {
             let thread = threads.get_unchecked_mut(current_pid);
             thread.sp = old_sp as usize;
-            if thread.state == ThreadState::Running {
+            if thread.state == crate::ThreadState::Running {
                 let prio = thread.prio;
                 threads.runqueue.add(current_pid, prio);
             }
@@ -199,7 +200,10 @@ unsafe fn sched(old_sp: u32) -> u32 {
                 if !threads.is_affine_to_curr_core(next) {
                     let iter = threads.runqueue.iter_from(next, prio);
                     next = iter
-                        .filter(|pid| threads.is_affine_to_curr_core(*pid))
+                        .filter(|pid| {
+                            let is = threads.is_affine_to_curr_core(*pid);
+                            is
+                        })
                         .next()?;
                 }
                 threads.runqueue.del(next);
@@ -220,5 +224,43 @@ unsafe fn sched(old_sp: u32) -> u32 {
         // see https://cliffle.com/blog/stm32-wfi-bug/
         #[cfg(context = "stm32")]
         cortex_m::asm::isb();
+    }
+}
+
+#[cfg(not(feature = "multicore"))]
+#[no_mangle]
+unsafe fn sched(old_sp: u32) -> u32 {
+    loop {
+        if let Some(res) = critical_section::with(|cs| {
+            let threads = unsafe { &mut *THREADS.as_ptr(cs) };
+            let next_pid = match threads.runqueue.get_next() {
+                Some(pid) => pid,
+                None => {
+                    cortex_m::asm::wfi();
+
+                    // see https://cliffle.com/blog/stm32-wfi-bug/
+                    #[cfg(context = "stm32")]
+                    cortex_m::asm::isb();
+
+                    // this fence seems necessary, see #310.
+                    core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
+                    return None;
+                }
+            };
+
+            if let Some(current_pid) = threads.current_pid() {
+                if next_pid == current_pid {
+                    return Some(0);
+                }
+                let thread = threads.get_unchecked_mut(current_pid);
+                thread.sp = old_sp as usize;
+            }
+            let &Thread { prio, sp, .. } = threads.get_unchecked(next_pid);
+            threads.set_current(next_pid, prio);
+
+            Some(sp as u32)
+        }) {
+            break res;
+        }
     }
 }

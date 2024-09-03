@@ -40,4 +40,5 @@ embassy-rp.workspace = true
 
 [features]
 defmt = ["dep:defmt", "riot-rs-runqueue/defmt"]
-core-affinity = []
+multicore = []
+core-affinity = ["multicore"]
