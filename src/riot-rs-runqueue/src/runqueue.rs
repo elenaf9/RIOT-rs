@@ -154,7 +154,10 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
     /// Advances runqueue number `rq`.
     ///
     /// This is used to "yield" to another thread of *the same* priority.
-    pub fn advance(&mut self, rq: RunqueueId) {
+    ///
+    /// Returns `false` if the operation had no effect, i.e. when the runqueue
+    /// is empty or only contains a single thread.
+    pub fn advance(&mut self, rq: RunqueueId) -> bool {
         debug_assert!((usize::from(rq)) < N_QUEUES);
         self.queues.advance(rq.0)
     }
@@ -308,10 +311,17 @@ mod clist {
             self.next_idxs[curr as usize]
         }
 
-        pub fn advance(&mut self, rq: u8) {
-            if self.tail[rq as usize] != Self::sentinel() {
-                self.tail[rq as usize] = self.next_idxs[self.tail[rq as usize] as usize];
+        pub fn advance(&mut self, rq: u8) -> bool {
+            let tail = self.tail[rq as usize];
+            if tail == Self::sentinel() {
+                return false;
             }
+            let next = self.next_idxs[tail as usize];
+            if tail == next {
+                return false;
+            }
+            self.tail[rq as usize] = next;
+            true
         }
 
         pub fn del(&mut self, n: u8) -> Option<u8> {

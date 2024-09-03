@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 riot-rs = { path = "../../src/riot-rs", features = [
   "threading",
+  "multicore",
   "core-affinity",
 ] }
 riot-rs-boards = { path = "../../src/riot-rs-boards" }

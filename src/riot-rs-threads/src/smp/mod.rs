@@ -14,33 +14,6 @@ impl From<CoreId> for usize {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct CoreAffinity(u8);
-
-impl CoreAffinity {
-    pub const fn no_affinity() -> Self {
-        Self(2u8.pow(Chip::CORES) - 1)
-    }
-
-    #[cfg(feature = "core-affinity")]
-    pub fn one(core: CoreId) -> Self {
-        Self(1 << core.0)
-    }
-
-    #[cfg(feature = "core-affinity")]
-    pub fn contains(&self, core: CoreId) -> bool {
-        self.0 & (1 << core.0) > 0
-    }
-}
-
-#[cfg(feature = "core-affinity")]
-impl Default for CoreAffinity {
-    fn default() -> Self {
-        Self::no_affinity()
-    }
-}
-
 pub trait Multicore {
     const CORES: u32;
 
@@ -78,4 +51,32 @@ cfg_if::cfg_if! {
 
 pub fn schedule_on_core(id: CoreId) {
     Chip::schedule_on_core(id)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg(feature = "core-affinity")]
+pub struct CoreAffinity(u8);
+
+#[cfg(feature = "core-affinity")]
+impl CoreAffinity {
+    pub const fn no_affinity() -> Self {
+        Self(2u8.pow(Chip::CORES) - 1)
+    }
+
+    pub fn one(core: CoreId) -> Self {
+        Self(1 << core.0)
+    }
+
+    pub fn contains(&self, core: CoreId) -> bool {
+        let contains = self.0 & (1 << core.0) > 0;
+        contains
+    }
+}
+
+#[cfg(feature = "core-affinity")]
+impl Default for CoreAffinity {
+    fn default() -> Self {
+        Self::no_affinity()
+    }
 }
