@@ -20,7 +20,7 @@ pub struct CoreAffinity(u8);
 
 impl CoreAffinity {
     pub const fn no_affinity() -> Self {
-        Self(2 ^ Chip::CORES as u8 - 1)
+        Self(2u8.pow(Chip::CORES) - 1)
     }
 
     #[cfg(feature = "core-affinity")]
