@@ -2,7 +2,7 @@ use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
 
-use crate::{cleanup, smp::Multicore, Arch, Thread, ThreadState, THREADS};
+use crate::{cleanup, Arch, Thread, ThreadState, THREADS};
 
 #[cfg(not(any(armv6m, armv7m, armv8m)))]
 compile_error!("no supported ARM variant selected");
@@ -68,14 +68,6 @@ impl Arch for Cpu {
             cortex_m::register::psp::write(0);
         }
         Self::schedule();
-    }
-
-    fn wfi() {
-        cortex_m::asm::wfi();
-
-        // see https://cliffle.com/blog/stm32-wfi-bug/
-        #[cfg(context = "stm32")]
-        cortex_m::asm::isb();
     }
 }
 
@@ -223,6 +215,10 @@ unsafe fn sched(old_sp: u32) -> u32 {
         }) {
             break res;
         }
-        crate::smp::Chip::wait_for_wakeup();
+        cortex_m::asm::wfi();
+
+        // see https://cliffle.com/blog/stm32-wfi-bug/
+        #[cfg(context = "stm32")]
+        cortex_m::asm::isb();
     }
 }

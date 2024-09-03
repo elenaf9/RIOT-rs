@@ -48,9 +48,6 @@ pub trait Multicore {
 
     fn startup_cores();
 
-    #[allow(dead_code)]
-    fn wait_for_wakeup();
-
     fn schedule_on_core(id: CoreId);
 }
 
@@ -71,10 +68,6 @@ cfg_if::cfg_if! {
             }
 
             fn startup_cores() {}
-
-            fn wait_for_wakeup() {
-                Cpu::wfi();
-            }
 
             fn schedule_on_core(_id: CoreId) {
                 Cpu::schedule();

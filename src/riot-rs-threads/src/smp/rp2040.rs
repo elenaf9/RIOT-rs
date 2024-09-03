@@ -27,10 +27,6 @@ impl Multicore for Chip {
         }
     }
 
-    fn wait_for_wakeup() {
-        cortex_m::asm::wfe()
-    }
-
     fn schedule_on_core(id: CoreId) {
         if id == Self::core_id() {
             crate::schedule();

@@ -172,10 +172,13 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         self.queues.is_empty(rq.0)
     }
 
+    /// Iterate over all runqueues, starting after thread `start` in runqueue `rq`.
+    ///
+    /// The `start` is not included in the iterator.
     pub fn iter_from(&self, start: ThreadId, rq: RunqueueId) -> RunQueueIter<N_QUEUES, N_THREADS> {
         RunQueueIter {
             prev: start.0,
-            tail: self.queues.peek_tail(rq.0),
+            rq_head: self.queues.peek_head(rq.0),
             bitcache: self.bitcache % (1 << (rq.0 + 1)),
             queues: &self.queues,
         }
@@ -186,11 +189,18 @@ fn ffs(val: usize) -> u32 {
     (USIZE_BITS as u32 - val.leading_zeros()) as u32
 }
 
+/// Iterator over all queues in a [`RunQueue`].
+///
+/// It starts from the highest priority queue and switches to the next lower
+/// priority runqueue after circling through the queue once.
 pub struct RunQueueIter<'a, const N_QUEUES: usize, const N_THREADS: usize> {
-    prev: u8,
-    tail: Option<u8>,
-    bitcache: usize,
     queues: &'a clist::CList<N_QUEUES, N_THREADS>,
+    // Predecessor in the circular runqueue list.
+    prev: u8,
+    // Head of the currently iterated runqueue.
+    rq_head: Option<u8>,
+    // Bitcache with the remaining runqueues that have to be iterated.
+    bitcache: usize,
 }
 
 impl<'a, const N_QUEUES: usize, const N_THREADS: usize> Iterator
@@ -198,20 +208,20 @@ impl<'a, const N_QUEUES: usize, const N_THREADS: usize> Iterator
 {
     type Item = ThreadId;
     fn next(&mut self) -> Option<Self::Item> {
-        // let prev = self.prev?;
-        if self.prev == self.tail? {
+        let mut next = self.queues.peek_next(self.prev);
+        if next == self.rq_head? {
             // Circled through whole queue, so switch to next one.
             let rq = ffs(self.bitcache) as u8 - 1;
+            // Clear current runqueue from bitcache.
             self.bitcache &= !(1 << rq);
-            if self.bitcache > 0 {
-                self.tail = self.queues.peek_tail(ffs(self.bitcache) as u8 - 1);
-                self.prev = self.tail?;
+            // Get head from remaining highest priority runqueue.
+            self.rq_head = if self.bitcache > 0 {
+                self.queues.peek_head(ffs(self.bitcache) as u8 - 1)
             } else {
-                self.tail = None;
-                return None;
-            }
+                None
+            };
+            next = self.rq_head?;
         }
-        let next = self.queues.peek_next(self.prev);
         self.prev = next;
         Some(ThreadId(next))
     }
@@ -246,7 +256,6 @@ mod clist {
             self.tail[rq as usize] == Self::sentinel()
         }
 
-        #[inline]
         pub fn push(&mut self, n: u8, rq: u8) {
             assert!(n < Self::sentinel());
             if self.next_idxs[n as usize] != Self::sentinel() {
@@ -266,7 +275,6 @@ mod clist {
             self.tail[rq as usize] = n;
         }
 
-        #[inline]
         pub fn pop_head(&mut self, rq: u8) -> Option<u8> {
             if self.tail[rq as usize] == Self::sentinel() {
                 // rq is empty, do nothing
@@ -293,14 +301,6 @@ mod clist {
                 None
             } else {
                 Some(self.next_idxs[self.tail[rq as usize] as usize])
-            }
-        }
-
-        pub fn peek_tail(&self, rq: u8) -> Option<u8> {
-            if self.tail[rq as usize] == Self::sentinel() {
-                None
-            } else {
-                Some(self.tail[rq as usize])
             }
         }
 

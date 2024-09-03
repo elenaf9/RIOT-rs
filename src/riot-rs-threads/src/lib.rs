@@ -407,12 +407,9 @@ pub fn sleep() {
 /// Returns `false` if no paused thread exists for `thread_id`.
 pub fn wakeup(thread_id: ThreadId) -> bool {
     THREADS.with_mut(|mut threads| {
-        if usize::from(thread_id) >= THREADS_NUMOF {
-            return false;
-        }
-        let thread = &threads.threads[usize::from(thread_id)];
-        if thread.state != ThreadState::Paused {
-            return false;
+        match threads.get_state(thread_id) {
+            Some(ThreadState::Paused) => {}
+            _ => return false,
         }
         threads.set_state(thread_id, ThreadState::Running);
         true
