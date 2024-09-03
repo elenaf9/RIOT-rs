@@ -100,7 +100,10 @@ impl Threads {
         self.current_threads[usize::from(core_id())].map(|(id, _)| id)
     }
 
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "used in context-specific scheduler implementation"
+    )]
     fn set_current(&mut self, pid: ThreadId, prio: RunqueueId) {
         self.current_threads[usize::from(core_id())] = Some((pid, prio))
     }
@@ -217,12 +220,6 @@ impl Threads {
         prio
     }
 
-    #[allow(dead_code)]
-    fn current_prio(&self) -> Option<RunqueueId> {
-        let current_pid = self.current_pid()?;
-        Some(self.get_unchecked(current_pid).prio)
-    }
-
     #[cfg(not(feature = "core-affinity"))]
     fn lowest_running_prio(&self) -> (CoreId, RunqueueId) {
         self.current_threads
@@ -253,6 +250,10 @@ impl Threads {
             .unwrap()
     }
 
+    #[allow(
+        dead_code,
+        reason = "used in context-specific scheduler implementation"
+    )]
     #[cfg(feature = "core-affinity")]
     fn is_affine_to_curr_core(&self, pid: ThreadId) -> bool {
         self.get_unchecked(pid)
@@ -425,12 +426,9 @@ pub fn sleep() {
 /// Returns `false` if no paused thread exists for `thread_id`.
 pub fn wakeup(thread_id: ThreadId) -> bool {
     THREADS.with_mut(|mut threads| {
-        if usize::from(thread_id) >= THREADS_NUMOF {
-            return false;
-        }
-        let thread = &threads.threads[usize::from(thread_id)];
-        if thread.state != ThreadState::Paused {
-            return false;
+        match threads.get_state(thread_id) {
+            Some(ThreadState::Paused) => {}
+            _ => return false,
         }
         threads.set_state(thread_id, ThreadState::Running);
         true

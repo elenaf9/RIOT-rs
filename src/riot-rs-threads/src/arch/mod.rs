@@ -22,8 +22,6 @@ pub trait Arch {
 
     /// Setup and initiate the first context switch.
     fn start_threading();
-
-    fn wfi();
 }
 
 cfg_if::cfg_if! {
@@ -49,9 +47,6 @@ cfg_if::cfg_if! {
                 unimplemented!()
             }
             fn schedule() {
-                unimplemented!()
-            }
-            fn wfi() {
                 unimplemented!()
             }
         }

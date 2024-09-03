@@ -49,7 +49,10 @@ impl<T> EnsureOnce<T> {
     //     self.inner.borrow(cs).borrow()
     // }
 
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "used in context-specific scheduler implementation"
+    )]
     pub fn as_ptr(&self, cs: CriticalSection) -> *mut T {
         self.inner.borrow(cs).as_ptr()
     }
