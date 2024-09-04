@@ -1,8 +1,9 @@
+use crate::{Arch, Thread};
 use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
 
-use crate::{cleanup, Arch, Thread, THREADS};
+use crate::{cleanup, ThreadId, THREADS};
 
 #[cfg(not(any(armv6m, armv7m, armv8m)))]
 compile_error!("no supported ARM variant selected");
@@ -33,20 +34,20 @@ impl Arch for Cpu {
 
         // 1. The stack starts at the highest address and grows downwards.
         // 2. A full stored context also contains R4-R11 and the stack pointer,
-        //    thus an additional 64 bytes need to be reserved.
+        //    thus an additional 36 bytes need to be reserved.
         // 3. Cortex-M expects the SP to be 8 byte aligned, so we chop the lowest
         //    7 bits by doing `& 0xFFFFFFF8`.
-        let stack_pos = ((stack_start + stack.len() - 64) & 0xFFFFFFF8) as *mut usize;
+        let stack_pos = ((stack_start + stack.len() - 36) & 0xFFFFFFF8) as *mut usize;
 
         unsafe {
-            write_volatile(stack_pos.offset(8), arg); // -> R0
-            write_volatile(stack_pos.offset(9), 1); // -> R1
-            write_volatile(stack_pos.offset(10), 2); // -> R2
-            write_volatile(stack_pos.offset(11), 3); // -> R3
-            write_volatile(stack_pos.offset(12), 12); // -> R12
-            write_volatile(stack_pos.offset(13), cleanup as usize); // -> LR
-            write_volatile(stack_pos.offset(14), func); // -> PC
-            write_volatile(stack_pos.offset(15), 0x01000000); // -> APSR
+            write_volatile(stack_pos.offset(0), arg); // -> R0
+            write_volatile(stack_pos.offset(1), 1); // -> R1
+            write_volatile(stack_pos.offset(2), 2); // -> R2
+            write_volatile(stack_pos.offset(3), 3); // -> R3
+            write_volatile(stack_pos.offset(4), 12); // -> R12
+            write_volatile(stack_pos.offset(5), cleanup as usize); // -> LR
+            write_volatile(stack_pos.offset(6), func); // -> PC
+            write_volatile(stack_pos.offset(7), 0x01000000); // -> APSR
         }
 
         thread.sp = stack_pos as usize;
@@ -65,9 +66,16 @@ impl Arch for Cpu {
             // Make sure PendSV has a low priority.
             let mut p = cortex_m::Peripherals::steal();
             p.SCB.set_priority(SystemHandler::PendSV, 0xFF);
-            cortex_m::register::psp::write(0);
         }
         Self::schedule();
+    }
+
+    fn wfi() {
+        cortex_m::asm::wfi();
+
+        // see https://cliffle.com/blog/stm32-wfi-bug/
+        #[cfg(context = "stm32")]
+        cortex_m::asm::isb();
     }
 }
 
@@ -79,20 +87,27 @@ unsafe extern "C" fn PendSV() {
     unsafe {
         asm!(
             "
-            mrs.n r0, psp
-            
-            cmp r0, #0
-            it ne
-            stmfdne r0!, {{r4-r11}}
-
             bl {sched}
-
             cmp r0, #0
+            /* label rules:
+             * - number only
+             * - no combination of *only* [01]
+             * - add f or b for 'next matching forward/backward'
+             * so let's use '99' forward ('99f')
+             */
             beq 99f
 
-            ldmfd r0!, {{r4-r11}}
             msr.n psp, r0
 
+            // r1 == 0 means that there was no previous thread.
+            // This is only the case if the scheduler was triggered for the first time,
+            // which also means that next thread has no stored context yet.
+            // Storing and loading of r4-r11 therefore can be skipped.
+            cmp r1, #0
+            beq 99f
+
+            stmia r1, {{r4-r11}}
+            ldmia r2, {{r4-r11}}
             99:
             movw LR, #0xFFFd
             movt LR, #0xFFFF
@@ -112,48 +127,35 @@ unsafe extern "C" fn PendSV() {
     unsafe {
         asm!(
             "
-            mrs.n r0, psp
-
-            cmp r0, #0
-            beq 95f
-
-
-            // The ldm section that restores the registers expects the stack:
-            // | r8 - r11 | <- r0
-            // | r4 - r7  |
-            // |   ...    |
-            // On ARMv6 without thumb instructions, `stmfd` is not supported,
-            // and only registers r1-r7 can be pushed.
-            // stmia is pushing in ascending manner.
-            // So we first need to subtract the space for the 8 stored registers,
-            // and then push the registers in the correct order.
-            subs r0, 32
-            mov r1,  r8
-            mov r2,  r9
-            stmia r0!, {{r1-r2}}
-            mov r1,  r10
-            mov r2,  r11
-            stmia r0!, {{r1-r2}}
-            stmia r0!, {{r4-r7}}
-            
-            // Move pointer back to bottom of stack.
-            subs r0, r0, 32
-
-            95:
             bl sched
-
             cmp r0, #0
             beq 99f
 
-            ldmfd r0!, {{r4-r7}}
+            //stmia r1!, {{r4-r7}}
+            str r4, [r1, #16]
+            str r5, [r1, #20]
+            str r6, [r1, #24]
+            str r7, [r1, #28]
+
+            mov  r4, r8
+            mov  r5, r9
+            mov  r6, r10
+            mov  r7, r11
+
+            str r4, [r1, #0]
+            str r5, [r1, #4]
+            str r6, [r1, #8]
+            str r7, [r1, #12]
+
+            //
+            ldmia r2!, {{r4-r7}}
             mov r11, r7
             mov r10, r6
             mov r9,  r5
             mov r8,  r4
-            ldmfd r0!, {{r4-r7}}
+            ldmia r2!, {{r4-r7}}
 
             msr.n psp, r0
-
             99:
             ldr r0, 999f
             mov LR, r0
@@ -168,97 +170,104 @@ unsafe extern "C" fn PendSV() {
     };
 }
 
+fn get_next_pid(threads: &mut crate::Threads) -> Option<ThreadId> {
+    #[cfg(not(feature = "multicore"))]
+    {
+        return threads.runqueue.get_next();
+    }
+    #[cfg(feature = "multicore")]
+    #[cfg(not(feature = "core-affinity"))]
+    {
+        return threads.runqueue.pop_next();
+    }
+    #[cfg(feature = "core-affinity")]
+    {
+        let (mut next, prio) = threads.runqueue.peek_head()?;
+        if !threads.is_affine_to_curr_core(next) {
+            let iter = threads.runqueue.iter_from(next, prio);
+            next = iter
+                .filter(|pid| threads.is_affine_to_curr_core(*pid))
+                .next()?
+        }
+        threads.runqueue.del(next);
+        return Some(next);
+    };
+}
+
 /// Schedule the next thread.
 ///
 /// It selects the next thread that should run from the runqueue.
 /// This may be current thread, or a new one.
 ///
 /// Returns:
-/// - `r0`: 0 if the next thread in the runqueue is the currently running thread, else the SP of the next thread.
+/// - `0` in `r0` if the next thread in the runqueue is the currently running thread
+/// - Else it writes into the following registers:
+///   - `r1`: pointer to [`Thread::high_regs`] from old thread (to store old register state)
+///   - `r2`: pointer to [`Thread::high_regs`] from new thread (to load new register state)
+///   - `r0`: stack-pointer for new thread
 ///
 /// This function is called in PendSV.
-#[cfg(feature = "multicore")]
 #[no_mangle]
-unsafe fn sched(old_sp: u32) -> u32 {
-    THREADS.with_mut(|mut threads| {
-        if let Some(current_pid) = threads.current_pid() {
-            let thread = threads.get_unchecked_mut(current_pid);
-            thread.sp = old_sp as usize;
-            if thread.state == crate::ThreadState::Running {
-                let prio = thread.prio;
-                threads.runqueue.add(current_pid, prio);
-            }
+unsafe fn sched() -> u128 {
+    #[cfg(feature = "multicore")]
+    critical_section::with(|cs| {
+        let threads = unsafe { &mut *THREADS.as_ptr(cs) };
+        let Some(thread) = threads.current() else {
+            return;
+        };
+        if thread.state == crate::ThreadState::Running {
+            let prio = thread.prio;
+            let pid = thread.pid;
+            threads.runqueue.add(pid, prio);
         }
     });
     loop {
-        if let Some(res) = THREADS.with_mut(|mut threads| {
-            #[cfg(not(feature = "core-affinity"))]
-            let next_pid = threads.runqueue.pop_next()?;
-            #[cfg(feature = "core-affinity")]
-            let next_pid = {
-                let (mut next, prio) = threads.runqueue.peek_head()?;
-                if !threads.is_affine_to_curr_core(next) {
-                    let iter = threads.runqueue.iter_from(next, prio);
-                    next = iter
-                        .filter(|pid| {
-                            let is = threads.is_affine_to_curr_core(*pid);
-                            is
-                        })
-                        .next()?;
-                }
-                threads.runqueue.del(next);
-                next
-            };
-            if Some(next_pid) == threads.current_pid() {
-                return Some(0);
-            }
-            let &Thread { prio, sp, .. } = threads.get_unchecked(next_pid);
-            threads.set_current(next_pid, prio);
-
-            Some(sp as u32)
-        }) {
-            break res;
-        }
-        cortex_m::asm::wfi();
-
-        // see https://cliffle.com/blog/stm32-wfi-bug/
-        #[cfg(context = "stm32")]
-        cortex_m::asm::isb();
-    }
-}
-
-#[cfg(not(feature = "multicore"))]
-#[no_mangle]
-unsafe fn sched(old_sp: u32) -> u32 {
-    loop {
         if let Some(res) = critical_section::with(|cs| {
             let threads = unsafe { &mut *THREADS.as_ptr(cs) };
-            let next_pid = match threads.runqueue.get_next() {
+
+            let next_pid = match get_next_pid(threads) {
                 Some(pid) => pid,
                 None => {
-                    cortex_m::asm::wfi();
+                    #[cfg(feature = "multicore")]
+                    unreachable!("At least one idle thread is always present for each core.");
 
-                    // see https://cliffle.com/blog/stm32-wfi-bug/
-                    #[cfg(context = "stm32")]
-                    cortex_m::asm::isb();
-
-                    // this fence seems necessary, see #310.
-                    core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
-                    return None;
+                    #[cfg(not(feature = "multicore"))]
+                    {
+                        Cpu::wfi();
+                        // this fence seems necessary, see #310.
+                        core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
+                        return None;
+                    }
                 }
             };
 
+            let mut current_high_regs = core::ptr::null();
             if let Some(current_pid) = threads.current_pid() {
                 if next_pid == current_pid {
                     return Some(0);
                 }
                 let thread = threads.get_unchecked_mut(current_pid);
-                thread.sp = old_sp as usize;
+                thread.sp = cortex_m::register::psp::read() as usize;
+                current_high_regs = thread.data.as_ptr();
             }
-            let &Thread { prio, sp, .. } = threads.get_unchecked(next_pid);
-            threads.set_current(next_pid, prio);
 
-            Some(sp as u32)
+            let next = threads.get_unchecked(next_pid);
+            let next_prio = next.prio;
+            let next_high_regs = next.data.as_ptr();
+            let next_sp = next.sp;
+
+            threads.set_current(next_pid, next_prio);
+
+            // PendSV expects these three pointers in r0, r1 and r2:
+            // r0 = &next.sp
+            // r1 = &current.high_regs
+            // r2 = &next.high_regs
+            // On Cortex-M, a u128 as return value is passed in registers r0-r3.
+            // So let's use that.
+            let res: u128 =
+                //  (r0)                     (r1)                        (r2)
+                (next_sp as u128) |  ((current_high_regs as u128) << 32) | ((next_high_regs as u128) << 64);
+            Some(res)
         }) {
             break res;
         }
