@@ -18,7 +18,7 @@ impl Multicore for Chip {
         CoreId(SIO.cpuid().read() as u8)
     }
 
-    fn startup_cores() {
+    fn startup_other_cores() {
         static STACK: ConstStaticCell<Stack<4096>> = ConstStaticCell::new(Stack::new());
         let start_threading = move || {
             Cpu::start_threading();

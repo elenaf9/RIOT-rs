@@ -46,6 +46,8 @@ use thread::{Thread, ThreadState};
 
 #[cfg(feature = "multicore")]
 use smp::{schedule_on_core, Multicore};
+#[cfg(feature = "multicore")]
+use static_cell::ConstStaticCell;
 
 /// Dummy type that is needed because [`CoreAffinity`] is part of the general API.
 ///
@@ -64,6 +66,8 @@ pub const THREADS_NUMOF: usize = 16;
 
 #[cfg(feature = "multicore")]
 pub const CORES_NUMOF: usize = smp::Chip::CORES as usize;
+#[cfg(feature = "multicore")]
+pub const IDLE_THREAD_STACK_SIZE: usize = smp::Chip::IDLE_THREAD_STACK_SIZE;
 
 static THREADS: EnsureOnce<Threads> = EnsureOnce::new(Threads::new());
 
@@ -311,7 +315,27 @@ impl Threads {
 /// - Cortex-M: to be called from the reset handler while MSP is active
 pub unsafe fn start_threading() {
     #[cfg(feature = "multicore")]
-    smp::Chip::startup_cores();
+    {
+        fn idle_thread() {
+            loop {
+                Cpu::wfi();
+            }
+        }
+
+        // Stacks for the idle threads.
+        // Creating them inside the below for loop is not possible because it would result in
+        // duplicate identifiers for the created `static`.
+        static CELLS: [ConstStaticCell<[u8; IDLE_THREAD_STACK_SIZE]>; CORES_NUMOF] =
+            [const { ConstStaticCell::new([0u8; IDLE_THREAD_STACK_SIZE]) }; CORES_NUMOF];
+
+        // Create one idle thread for each core.
+        for i in 0..smp::Chip::CORES as usize {
+            let stack = CELLS[i].take();
+            thread_create_noarg(idle_thread, stack, 0, None);
+        }
+
+        smp::Chip::startup_other_cores();
+    }
     Cpu::start_threading();
 }
 

@@ -16,10 +16,11 @@ impl From<CoreId> for usize {
 
 pub trait Multicore {
     const CORES: u32;
+    const IDLE_THREAD_STACK_SIZE: usize = 256;
 
     fn core_id() -> CoreId;
 
-    fn startup_cores();
+    fn startup_other_cores();
 
     fn schedule_on_core(id: CoreId);
 }
@@ -40,7 +41,7 @@ cfg_if::cfg_if! {
                 CoreId(0)
             }
 
-            fn startup_cores() {}
+            fn startup_other_cores() {}
 
             fn schedule_on_core(_id: CoreId) {
                 Cpu::schedule();
