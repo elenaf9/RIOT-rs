@@ -1,7 +1,7 @@
 //! This module provides a Lock implementation.
 use core::cell::UnsafeCell;
 
-use crate::{threadlist::ThreadList, ThreadState};
+use crate::{threadlist::ThreadList, ThreadState, THREADS};
 
 /// A basic locking object.
 ///
@@ -51,12 +51,12 @@ impl Lock {
     ///
     /// **NOTE**: must not be called outside thread context!
     pub fn acquire(&self) {
-        critical_section::with(|cs| {
+        THREADS.with_mut(|mut threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => *state = LockState::Locked(ThreadList::new()),
                 LockState::Locked(waiters) => {
-                    waiters.put_current(cs, ThreadState::LockBlocked);
+                    waiters.put_current(&mut threads, ThreadState::LockBlocked);
                 }
             }
         })
@@ -86,12 +86,12 @@ impl Lock {
     /// If the lock was locked and there were no waiters, the lock will be unlocked.
     /// If the lock was not locked, the function just returns.
     pub fn release(&self) {
-        critical_section::with(|cs| {
+        THREADS.with_mut(|mut threads| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {}
                 LockState::Locked(waiters) => {
-                    if waiters.pop(cs).is_none() {
+                    if waiters.pop(&mut threads).is_none() {
                         *state = LockState::Unlocked
                     }
                 }
