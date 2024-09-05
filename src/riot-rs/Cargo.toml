@@ -23,7 +23,7 @@ riot-rs-utils = { workspace = true }
 static_cell = { workspace = true }
 
 [features]
-default = ["riot-rs-rt/_panic-handler"]
+default = ["riot-rs-rt/_panic-handler", "single-core"]
 
 #! ## System functionality
 ## Enables GPIO interrupt support.
@@ -104,5 +104,7 @@ executor-thread = ["riot-rs-embassy/executor-thread", "threading"]
 # *Used for internal testing only.*
 executor-none = ["riot-rs-embassy/executor-none"]
 
-multicore = ["riot-rs-threads?/multicore"]
+#! ## Multicore functionality.
+single-core = ["riot-rs-rt/critical-section-single-core"]
+multicore = ["riot-rs-threads?/multicore", "riot-rs-rt/multicore"]
 core-affinity = ["multicore", "riot-rs-threads?/core-affinity"]
