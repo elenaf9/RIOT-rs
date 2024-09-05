@@ -1,4 +1,4 @@
-use crate::{thread_flags::ThreadFlags, Arch, Cpu, RunqueueId, ThreadData, ThreadId};
+use crate::{arch::ThreadData, thread_flags::ThreadFlags, Arch, Cpu, RunqueueId, ThreadId};
 
 /// Main struct for holding thread data.
 #[derive(Debug)]

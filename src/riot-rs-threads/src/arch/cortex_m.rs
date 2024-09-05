@@ -182,7 +182,7 @@ fn get_next_pid(threads: &mut crate::Threads) -> Option<ThreadId> {
     }
     #[cfg(feature = "core-affinity")]
     {
-        let (mut next, prio) = threads.runqueue.peek_head()?;
+        let (mut next, prio) = threads.runqueue.peek_next()?;
         if !threads.is_affine_to_curr_core(next) {
             let iter = threads.runqueue.iter_from(next, prio);
             next = iter
@@ -241,7 +241,7 @@ unsafe fn sched() -> u128 {
                 }
             };
 
-            let mut current_high_regs = core::ptr::null();
+            let current_high_regs;
             if let Some(current_pid) = threads.current_pid() {
                 if next_pid == current_pid {
                     return Some(0);
@@ -249,14 +249,15 @@ unsafe fn sched() -> u128 {
                 let thread = threads.get_unchecked_mut(current_pid);
                 thread.sp = cortex_m::register::psp::read() as usize;
                 current_high_regs = thread.data.as_ptr();
+            } else {
+                current_high_regs = core::ptr::null();
             }
 
+            *threads.current_pid_mut() = Some(next_pid);
+
             let next = threads.get_unchecked(next_pid);
-            let next_prio = next.prio;
             let next_high_regs = next.data.as_ptr();
             let next_sp = next.sp;
-
-            threads.set_current(next_pid, next_prio);
 
             // PendSV expects these three pointers in r0, r1 and r2:
             // r0 = &next.sp

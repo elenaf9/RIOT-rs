@@ -1,7 +1,6 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(naked_functions)]
 #![feature(used_with_arg)]
-#![feature(type_alias_impl_trait)]
 #![cfg_attr(target_arch = "xtensa", feature(asm_experimental_arch))]
 // Disable indexing lints for now, possible panics are documented or rely on internally-enforced
 // invariants
@@ -39,7 +38,7 @@ pub use smp::CoreId;
 #[doc(hidden)]
 pub use arch::schedule;
 
-use arch::{Arch, Cpu, ThreadData};
+use arch::{Arch, Cpu};
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::RunQueue;
 use thread::{Thread, ThreadState};
@@ -88,9 +87,9 @@ struct Threads {
 
     /// The currently running thread(s).
     #[cfg(feature = "multicore")]
-    current_threads: [Option<(ThreadId, RunqueueId)>; CORES_NUMOF],
+    current_threads: [Option<ThreadId>; CORES_NUMOF],
     #[cfg(not(feature = "multicore"))]
-    current_thread: Option<(ThreadId, RunqueueId)>,
+    current_thread: Option<ThreadId>,
 }
 
 impl Threads {
@@ -115,35 +114,33 @@ impl Threads {
     ///
     /// Returns `None` if there is no current thread.
     fn current(&mut self) -> Option<&mut Thread> {
-        #[cfg(feature = "multicore")]
-        let current = self.current_threads[usize::from(core_id())];
-        #[cfg(not(feature = "multicore"))]
-        let current = self.current_thread;
-
-        current.map(|(pid, _)| &mut self.threads[usize::from(pid)])
+        self.current_pid()
+            .map(|pid| &mut self.threads[usize::from(pid)])
     }
 
     fn current_pid(&self) -> Option<ThreadId> {
         #[cfg(feature = "multicore")]
-        let current = self.current_threads[usize::from(core_id())];
+        {
+            self.current_threads[usize::from(core_id())]
+        }
         #[cfg(not(feature = "multicore"))]
-        let current = self.current_thread;
-
-        current.map(|(id, _)| id)
+        {
+            self.current_thread
+        }
     }
 
     #[allow(
         dead_code,
         reason = "used in context-specific scheduler implementation"
     )]
-    fn set_current(&mut self, pid: ThreadId, prio: RunqueueId) {
+    fn current_pid_mut(&mut self) -> &mut Option<ThreadId> {
         #[cfg(feature = "multicore")]
         {
-            self.current_threads[usize::from(core_id())] = Some((pid, prio));
+            &mut self.current_threads[usize::from(core_id())]
         }
         #[cfg(not(feature = "multicore"))]
         {
-            self.current_thread = Some((pid, prio));
+            &mut self.current_thread
         }
     }
 
@@ -159,22 +156,23 @@ impl Threads {
         stack: &'static mut [u8],
         prio: RunqueueId,
         _core_affinity: Option<CoreAffinity>,
-    ) -> Option<&mut Thread> {
-        if let Some((thread, pid)) = self.get_unused() {
-            Cpu::setup_stack(thread, stack, func, arg);
-            thread.prio = prio;
-            thread.pid = pid;
-            #[cfg(feature = "core-affinity")]
-            {
-                thread.core_affinity = _core_affinity.unwrap_or_default();
-            }
-
-            Some(thread)
-        } else {
-            None
+    ) -> Option<ThreadId> {
+        let (thread, pid) = self.get_unused()?;
+        Cpu::setup_stack(thread, stack, func, arg);
+        thread.prio = prio;
+        thread.pid = pid;
+        #[cfg(feature = "core-affinity")]
+        {
+            thread.core_affinity = _core_affinity.unwrap_or_default();
         }
+
+        Some(pid)
     }
 
+    #[allow(
+        dead_code,
+        reason = "used in context-specific scheduler implementation"
+    )]
     fn get_unchecked(&self, thread_id: ThreadId) -> &Thread {
         &self.threads[usize::from(thread_id)]
     }
@@ -220,25 +218,21 @@ impl Threads {
         let prio = thread.prio;
         match (old_state, state) {
             (old, new) if new == old => {}
-            (ThreadState::Invalid, ThreadState::Running) => {
+            (old, ThreadState::Running) => {
                 self.runqueue.add(pid, prio);
-                // We are in the startup phase were all threads are created.
-                // Don't trigger the scheduler before `start_threading`.
-                // FIXME: threads aren't only created during startup, so
-                // we need to find another fix for this.
-            }
-            (_, ThreadState::Running) => {
-                self.runqueue.add(pid, prio);
+                if old == ThreadState::Invalid && self.current_pid().is_none() {
+                    return old;
+                }
                 #[cfg(not(feature = "multicore"))]
                 {
-                    if Some(prio) > self.current_thread.unzip().1 {
+                    if Some(prio) > self.current().map(|t| t.prio) {
                         schedule()
                     }
                 }
                 #[cfg(feature = "multicore")]
                 {
                     let (core, lowest_prio) = self.lowest_running_prio(pid);
-                    if lowest_prio <= prio {
+                    if lowest_prio <= Some(prio) {
                         schedule_on_core(core);
                     }
                 }
@@ -270,21 +264,20 @@ impl Threads {
     }
 
     #[cfg(feature = "multicore")]
-    fn lowest_running_prio(&self, _pid: ThreadId) -> (CoreId, RunqueueId) {
+    fn lowest_running_prio(&self, _pid: ThreadId) -> (CoreId, Option<RunqueueId>) {
         #[cfg(feature = "core-affinity")]
         let affinity = self.get_unchecked(_pid).core_affinity;
-
         self.current_threads
             .iter()
             .enumerate()
-            .filter_map(|(core, thread)| {
-                let core = CoreId::new(core as u8);
+            .filter_map(|(core, pid)| {
+                let core = CoreId(core as u8);
                 #[cfg(feature = "core-affinity")]
                 if !affinity.contains(core) {
                     return None;
                 }
-                let rq = thread.unzip().1.unwrap_or(RunqueueId::new(0));
-                Some((core, rq))
+                let prio = pid.map(|pid| self.get_unchecked(pid).prio);
+                Some((core, prio))
             })
             .min_by_key(|(_, rq)| *rq)
             .unwrap()
@@ -415,8 +408,7 @@ pub unsafe fn thread_create_raw(
     THREADS.with_mut(|mut threads| {
         let thread_id = threads
             .create(func, arg, stack, RunqueueId::new(prio), core_affinity)
-            .expect("Max `THREADS_NUMOF` concurrent threads should be created.")
-            .pid;
+            .expect("Max `THREADS_NUMOF` concurrent threads should be created.");
         threads.set_state(thread_id, ThreadState::Running);
         thread_id
     })

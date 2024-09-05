@@ -19,10 +19,12 @@ impl Multicore for Chip {
     }
 
     fn startup_other_cores() {
+        // TODO: How much stack do we really need here?
         static STACK: ConstStaticCell<Stack<4096>> = ConstStaticCell::new(Stack::new());
+        // Trigger scheduler.
         let start_threading = move || {
             Cpu::start_threading();
-            loop {}
+            unreachable!()
         };
         unsafe {
             spawn_core1(CORE1::steal(), STACK.take(), start_threading);
@@ -34,30 +36,34 @@ impl Multicore for Chip {
             crate::schedule();
             return;
         }
+
+        // Use the FIFO queue between the cores to trigger the scheduler
+        // on the other core.
         let sio = SIO;
-        // We only use the FIFO queue to trigger the scheduler.
         // If its already full, no need to send another `SCHEDULE_TOKEN`.
         if !sio.fifo().st().read().rdy() {
             return;
         }
         sio.fifo().wr().write_value(SCHEDULE_TOKEN);
-        // Wake up other core if it `WFE`s.
-        cortex_m::asm::sev();
     }
 }
 
-const SCHEDULE_TOKEN: u32 = 0x111;
+const SCHEDULE_TOKEN: u32 = 0x11;
 
+// Handle FIFO message on core 0 from core 1.
 #[interrupt]
 unsafe fn SIO_IRQ_PROC0() {
     handle_fifo_msg();
 }
 
+// Handle FIFO message on core 1 from core 0.
 #[interrupt]
 unsafe fn SIO_IRQ_PROC1() {
     handle_fifo_msg();
 }
 
+/// Reads FIFO message from other core and triggers scheduler
+/// if a [`SCHEDULE_TOKEN`] was received.
 fn handle_fifo_msg() {
     let sio = SIO;
     // Clear IRQ
