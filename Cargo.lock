@@ -3632,7 +3632,6 @@ dependencies = [
  "cfg-if",
  "cortex-m",
  "defmt",
- "embassy-rp",
 ]
 
 [[package]]
@@ -3673,7 +3672,6 @@ dependencies = [
  "cortex-m-semihosting",
  "defmt",
  "defmt-rtt-target",
- "embassy-rp",
  "esp-println",
  "log 0.4.22",
  "rtt-target",
@@ -4472,6 +4470,7 @@ version = "0.1.0"
 dependencies = [
  "riot-rs",
  "riot-rs-boards",
+ "riot-rs-rt",
 ]
 
 [[package]]
