@@ -10,4 +10,5 @@ In this folder, run
 
     laze build -b rpi-pico-w run
 
-The application will start two threads that run on different cores and print a message from each thread.
+The application will start multiple threads with different priorities and core affinities.
+The threads print their ID and the core they are running on.
