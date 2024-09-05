@@ -278,9 +278,8 @@ impl Threads {
     }
 
     /// Returns the priority of a thread.
-    fn get_priority(&self, thread_id: ThreadId) -> Option<RunqueueId> {
-        self.is_valid_pid(thread_id)
-            .then(|| self.get_unchecked(thread_id).prio)
+    fn get_priority(&self, thread_id: ThreadId) -> RunqueueId {
+        self.get_unchecked(thread_id).prio
     }
 
     /// Changes the priority of a thread and triggers the scheduler if needed.
@@ -444,7 +443,7 @@ impl Threads {
                 if !affinity.contains(core) {
                     return None;
                 }
-                let prio = pid.map(|pid| self.get_unchecked(pid).prio);
+                let prio = pid.map(|pid| self.get_priority(pid));
                 Some(((core), prio))
             })
             .min_by_key(|(_, rq)| *rq)
@@ -667,7 +666,11 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
 ///
 /// Returns `None` if this is not a valid thread.
 pub fn get_priority(thread_id: ThreadId) -> Option<RunqueueId> {
-    THREADS.with_mut(|threads| threads.get_priority(thread_id))
+    THREADS.with_mut(|threads| {
+        threads
+            .is_valid_pid(thread_id)
+            .then(|| threads.get_priority(thread_id))
+    })
 }
 
 /// Changes the priority of a thread.
