@@ -1,4 +1,4 @@
-use crate::arch::{Arch, Cpu};
+use crate::arch::{Arch as _, Cpu};
 
 use embassy_rp::{
     interrupt,
