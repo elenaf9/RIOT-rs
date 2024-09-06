@@ -26,7 +26,7 @@ enum LockState {
 }
 
 impl<T> Mutex<T> {
-    /// Creates new **unlocked** [`Mutex`].
+    /// Creates a new **unlocked** [`Mutex`].
     pub const fn new(value: T) -> Self {
         Self {
             state: UnsafeCell::new(LockState::Unlocked),
@@ -34,9 +34,7 @@ impl<T> Mutex<T> {
         }
     }
 
-    /// Returns the current mutex state.
-    ///
-    /// `true` if locked, `false` otherwise
+    /// Returns whether the mutex is locked.
     pub fn is_locked(&self) -> bool {
         critical_section::with(|_| {
             let state = unsafe { &*self.state.get() };
@@ -44,7 +42,7 @@ impl<T> Mutex<T> {
         })
     }
 
-    /// Get this mutex (blocking).
+    /// Acquires a mutex, blocking the current thread until it is able to do so.
     ///
     /// If the mutex was unlocked, it will be locked and a [`MutexGuard`] is returned.
     /// If the mutex is locked, this function will block the current thread until the mutex gets
@@ -83,7 +81,7 @@ impl<T> Mutex<T> {
         MutexGuard { mutex: self }
     }
 
-    /// Get the mutex (non-blocking).
+    /// Attempts to acquire this lock, in a non-blocking fashion.
     ///
     /// If the mutex was unlocked, it will be locked and a [`MutexGuard`] is returned.
     /// If the mutex was locked `None` is returned.
@@ -135,7 +133,7 @@ impl<T> Mutex<T> {
     }
 }
 
-/// Grants access to a [`Mutex`] inner data.
+/// Grants access to the [`Mutex`] inner data.
 ///
 /// Dropping the [`MutexGuard`] will unlock the [`Mutex`];
 pub struct MutexGuard<'a, T> {
