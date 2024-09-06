@@ -51,7 +51,7 @@ cfg_if::cfg_if! {
         pub use rp2040::Chip;
     }
     else {
-        use crate::{Arch, Cpu};
+        use crate::{Arch as _, Cpu};
 
         pub struct Chip;
         impl Multicore for Chip {
