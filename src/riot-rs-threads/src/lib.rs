@@ -184,7 +184,7 @@ impl Threads {
             .then(|| self.get_unchecked(thread_id).prio)
     }
 
-    /// Change the priority of a thread.
+    /// Changes the priority of a thread.
     ///
     /// Returns true if the thread is in the runqueue and the order might have
     /// changed.
@@ -359,14 +359,14 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
     })
 }
 
-/// Get the priority of a thread.
+/// Returns the priority of a thread.
 ///
 /// Returns `None` if this is not a valid thread.
 pub fn get_priority(thread_id: ThreadId) -> Option<u8> {
     THREADS.with_mut(|threads| threads.get_priority(thread_id).map(|rq| *rq))
 }
 
-/// Change the priority of a thread.
+/// Changes the priority of a thread.
 ///
 /// This might trigger a context switch.
 pub fn set_priority(thread_id: ThreadId, prio: u8) {
