@@ -195,7 +195,7 @@ mod clist {
             }
         }
 
-        /// Remove a thread from the list.
+        /// Removes a thread from the list.
         ///
         /// If the thread was the only thread in its runqueue, `Some` is returned
         /// with the ID of the now empty runqueue.
