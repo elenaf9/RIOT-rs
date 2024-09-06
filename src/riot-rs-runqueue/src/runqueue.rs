@@ -124,7 +124,7 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
             .map(|id| (ThreadId::new(id), RunqueueId::new(rq)))
     }
 
-    /// Pop the thread that should run next.
+    /// Pops the thread that should run next.
     ///
     /// Pops the next runnable thread of
     /// the runqueue with the highest index.
@@ -165,7 +165,7 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
         self.queues.is_empty(rq.0)
     }
 
-    /// Iterate over all runqueues, starting after thread `start` in runqueue `rq`.
+    /// Returns an iterator over all runqueues, starting after thread `start` in runqueue `rq`.
     ///
     /// The `start` is not included in the iterator.
     pub fn iter_from(&self, start: ThreadId, rq: RunqueueId) -> RunQueueIter<N_QUEUES, N_THREADS> {

@@ -1,6 +1,5 @@
 use crate::arch::{Arch, Cpu};
 
-use super::{CoreId, Multicore};
 use embassy_rp::{
     interrupt,
     multicore::{spawn_core1, Stack},
@@ -8,6 +7,8 @@ use embassy_rp::{
 };
 use rp_pac::SIO;
 use static_cell::ConstStaticCell;
+
+use super::{CoreId, Multicore};
 
 pub struct Chip;
 

@@ -6,7 +6,7 @@ use crate::CORES_NUMOF;
 pub struct CoreId(pub(crate) u8);
 
 impl CoreId {
-    /// Create a new [`CoreId`].
+    /// Creates a new [`CoreId`].
     ///
     /// # Panics
     ///
