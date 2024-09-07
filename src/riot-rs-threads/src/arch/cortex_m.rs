@@ -3,7 +3,7 @@ use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
 
-use crate::{cleanup, ThreadId, THREADS};
+use crate::{cleanup, THREADS};
 
 #[cfg(not(any(armv6m, armv7m, armv8m)))]
 compile_error!("no supported ARM variant selected");
@@ -170,30 +170,6 @@ unsafe extern "C" fn PendSV() {
     };
 }
 
-fn get_next_pid(threads: &mut crate::Threads) -> Option<ThreadId> {
-    #[cfg(not(feature = "multicore"))]
-    {
-        return threads.runqueue.get_next();
-    }
-    #[cfg(feature = "multicore")]
-    #[cfg(not(feature = "core-affinity"))]
-    {
-        return threads.runqueue.pop_next();
-    }
-    #[cfg(feature = "core-affinity")]
-    {
-        let (mut next, prio) = threads.runqueue.peek_next()?;
-        if !threads.is_affine_to_curr_core(next) {
-            let iter = threads.runqueue.iter_from(next, prio);
-            next = iter
-                .filter(|pid| threads.is_affine_to_curr_core(*pid))
-                .next()?
-        }
-        threads.runqueue.del(next);
-        return Some(next);
-    };
-}
-
 /// Schedule the next thread.
 ///
 /// It selects the next thread that should run from the runqueue.
@@ -210,22 +186,13 @@ fn get_next_pid(threads: &mut crate::Threads) -> Option<ThreadId> {
 #[no_mangle]
 unsafe fn sched() -> u128 {
     #[cfg(feature = "multicore")]
-    critical_section::with(|cs| {
-        let threads = unsafe { &mut *THREADS.as_ptr(cs) };
-        let Some(thread) = threads.current() else {
-            return;
-        };
-        if thread.state == crate::ThreadState::Running {
-            let prio = thread.prio;
-            let pid = thread.pid;
-            threads.runqueue.add(pid, prio);
-        }
-    });
+    THREADS.with_mut(|mut threads| threads.add_current_thread_to_rq());
+
     loop {
         if let Some(res) = critical_section::with(|cs| {
             let threads = unsafe { &mut *THREADS.as_ptr(cs) };
 
-            let next_pid = match get_next_pid(threads) {
+            let next_pid = match threads.get_next_pid() {
                 Some(pid) => pid,
                 None => {
                     #[cfg(feature = "multicore")]

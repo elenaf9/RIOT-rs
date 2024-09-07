@@ -263,6 +263,46 @@ impl Threads {
     }
 
     #[cfg(feature = "multicore")]
+    fn add_current_thread_to_rq(&mut self) {
+        let Some(thread) = self.current() else {
+            return;
+        };
+        if thread.state == crate::ThreadState::Running {
+            let prio = thread.prio;
+            let pid = thread.pid;
+            self.runqueue.add(pid, prio);
+        }
+    }
+
+    #[allow(
+        dead_code,
+        reason = "used in context-specific scheduler implementation"
+    )]
+    fn get_next_pid(&mut self) -> Option<ThreadId> {
+        #[cfg(not(feature = "multicore"))]
+        {
+            return self.runqueue.get_next();
+        }
+        #[cfg(feature = "multicore")]
+        #[cfg(not(feature = "core-affinity"))]
+        {
+            return self.runqueue.pop_next();
+        }
+        #[cfg(feature = "core-affinity")]
+        {
+            let (mut next, prio) = self.runqueue.peek_next()?;
+            if !self.is_affine_to_curr_core(next) {
+                let iter = self.runqueue.iter_from(next, prio);
+                next = iter
+                    .filter(|pid| self.is_affine_to_curr_core(*pid))
+                    .next()?
+            }
+            self.runqueue.del(next);
+            return Some(next);
+        };
+    }
+
+    #[cfg(feature = "multicore")]
     fn lowest_running_prio(&self, _pid: ThreadId) -> (CoreId, Option<RunqueueId>) {
         #[cfg(feature = "core-affinity")]
         let affinity = self.get_unchecked(_pid).core_affinity;
