@@ -14,11 +14,14 @@ impl Arch for Cpu {
     const DEFAULT_THREAD_DATA: Self::ThreadData = default_trap_frame();
 
     fn schedule() {
+        #[cfg(not(feature = "multi-core"))]
         unsafe {
             (&*SYSTEM::PTR)
-                .cpu_intr_from_cpu_1()
-                .modify(|_, w| w.cpu_intr_from_cpu_1().set_bit());
+                .cpu_intr_from_cpu_0()
+                .modify(|_, w| w.cpu_intr_from_cpu_0().set_bit());
         }
+        #[cfg(feature = "multi-core")]
+        crate::smp::schedule_on_core(crate::core_id())
     }
 
     fn setup_stack(thread: &mut crate::thread::Thread, stack: &mut [u8], func: usize, arg: usize) {
@@ -46,11 +49,11 @@ impl Arch for Cpu {
     }
 
     fn start_threading() {
-        interrupt::disable(esp_hal::Cpu::ProCpu, Interrupt::FROM_CPU_INTR1);
+        interrupt::disable(esp_hal::Cpu::ProCpu, Interrupt::FROM_CPU_INTR0);
         Self::schedule();
-        // Panics if `FROM_CPU_INTR1` is among `esp_hal::interrupt::RESERVED_INTERRUPTS`,
+        // Panics if `FROM_CPU_INTR0` is among `esp_hal::interrupt::RESERVED_INTERRUPTS`,
         // which isn't the case.
-        interrupt::enable(Interrupt::FROM_CPU_INTR1, interrupt::Priority::min()).unwrap();
+        interrupt::enable(Interrupt::FROM_CPU_INTR0, interrupt::Priority::min()).unwrap();
     }
 }
 
@@ -92,7 +95,22 @@ const fn default_trap_frame() -> TrapFrame {
     }
 }
 
-/// Handler for software interrupt 0, which we use for context switching.
+/// Handler for software interrupt 0, which we use for context switching on core 0.
+#[allow(non_snake_case)]
+#[no_mangle]
+extern "C" fn FROM_CPU_INTR0(trap_frame: &mut TrapFrame) {
+    unsafe {
+        // clear FROM_CPU_INTR0
+        (&*SYSTEM::PTR)
+            .cpu_intr_from_cpu_0()
+            .modify(|_, w| w.cpu_intr_from_cpu_0().clear_bit());
+
+        sched(trap_frame)
+    }
+}
+
+/// Handler for software interrupt 1, which we use for context switching on core 1.
+#[cfg(feature = "multi-core")]
 #[allow(non_snake_case)]
 #[no_mangle]
 extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
