@@ -6,10 +6,5 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-riot-rs = { path = "../../src/riot-rs", default-features = false, features = [
-  "threading",
-  "multicore",
-  "core-affinity",
-] }
+riot-rs = { path = "../../src/riot-rs", features = ["core-affinity"] }
 riot-rs-boards = { path = "../../src/riot-rs-boards" }
-riot-rs-rt = { path = "../../src/riot-rs-rt", features = ["_panic-handler"] }
