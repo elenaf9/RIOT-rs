@@ -3,3 +3,5 @@ apps:
     selects:
       - ?release
       - executor-thread
+      - sw/threading
+      - multicore
