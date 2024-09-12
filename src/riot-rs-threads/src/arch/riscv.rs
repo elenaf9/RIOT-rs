@@ -128,7 +128,7 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 unsafe fn sched(trap_frame: &mut TrapFrame) {
     loop {
         if THREADS.with_mut(|mut threads| {
-            let next_pid = match threads.runqueue.get_next() {
+            let next_pid = match threads.get_next_pid() {
                 Some(pid) => pid,
                 None => {
                     Cpu::wfi();
@@ -145,7 +145,7 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
                     &mut threads.threads[usize::from(current_pid)].data,
                 );
             }
-            threads.current_thread = Some(next_pid);
+            *threads.current_pid_mut() = Some(next_pid);
             copy_registers(&threads.threads[usize::from(next_pid)].data, trap_frame);
             true
         }) {
