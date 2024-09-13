@@ -13,8 +13,6 @@ contexts:
       - ?defmt
     env:
       RUSTFLAGS:
-        - "-Clink-arg=--nmagic"
-        - "-Clink-arg=${LINK_ARG_PREFIX}--no-eh-frame-hdr"
         - --cfg builder=\"${builder}\"
         - --cfg context=\"${builder}\"
         - --cfg context=\"riot-rs\"
@@ -357,6 +355,8 @@ modules:
       global:
         OBJCOPY: arm-none-eabi-objcopy
         RUSTFLAGS:
+          - -Clink-arg=--nmagic
+          - -Clink-arg=${LINK_ARG_PREFIX}--no-eh-frame-hdr
           - -Clink-arg=-Tlinkme.x
           - -Clink-arg=-Tlink.x
           - -Clink-arg=-Tdevice.x
