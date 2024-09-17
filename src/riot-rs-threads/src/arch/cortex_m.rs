@@ -185,12 +185,12 @@ unsafe extern "C" fn PendSV() {
 /// This function is called in PendSV.
 #[no_mangle]
 unsafe fn sched() -> u128 {
-    #[cfg(feature = "multicore")]
-    THREADS.with_mut(|mut threads| threads.add_current_thread_to_rq());
-
     loop {
         if let Some(res) = critical_section::with(|cs| {
             let threads = unsafe { &mut *THREADS.as_ptr(cs) };
+
+            #[cfg(feature = "multicore")]
+            threads.add_current_thread_to_rq();
 
             let next_pid = match threads.get_next_pid() {
                 Some(pid) => pid,

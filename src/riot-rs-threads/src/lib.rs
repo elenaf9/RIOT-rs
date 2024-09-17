@@ -218,19 +218,25 @@ impl Threads {
         let prio = thread.prio;
         match (old_state, state) {
             (old, new) if new == old => {}
-            (old, ThreadState::Running) => {
+            (ThreadState::Invalid, ThreadState::Running) if self.current_pid().is_none() => {
                 self.runqueue.add(pid, prio);
-                if old == ThreadState::Invalid && self.current_pid().is_none() {
-                    return old;
-                }
+            }
+            (_, ThreadState::Running) => {
                 #[cfg(not(feature = "multicore"))]
                 {
+                    self.runqueue.add(pid, prio);
                     if Some(prio) > self.current().map(|t| t.prio) {
                         schedule()
                     }
                 }
                 #[cfg(feature = "multicore")]
                 {
+                    if self.current_threads.contains(&Some(pid)) {
+                        // If the thread is currently running, the scheduler
+                        // will re-add it to the runqueue in `sched`.
+                        return old_state;
+                    }
+                    self.runqueue.add(pid, prio);
                     let (core, lowest_prio) = self.lowest_running_prio(pid);
                     if lowest_prio <= Some(prio) {
                         schedule_on_core(core);
