@@ -6,6 +6,7 @@ use crate::{
 use super::Multicore;
 use embassy_rp::{
     interrupt,
+    interrupt::InterruptExt as _,
     multicore::{spawn_core1, Stack},
     peripherals::CORE1,
 };
@@ -24,11 +25,15 @@ impl Multicore for Chip {
     fn startup_cores() {
         static STACK: ConstStaticCell<Stack<4096>> = ConstStaticCell::new(Stack::new());
         let start_threading = move || {
+            unsafe {
+                interrupt::SIO_IRQ_PROC1.enable();
+            }
             Cpu::start_threading();
             loop {}
         };
         unsafe {
             spawn_core1(CORE1::steal(), STACK.take(), start_threading);
+            interrupt::SIO_IRQ_PROC0.enable();
         }
     }
 
