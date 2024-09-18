@@ -117,12 +117,8 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 unsafe fn sched(trap_frame: &mut TrapFrame) {
     loop {
         if THREADS.with_mut(|mut threads| {
-            let next_pid = match threads.runqueue.get_next() {
-                Some(pid) => pid,
-                None => {
-                    unsafe { core::arch::asm!("waiti 0") };
-                    return false;
-                }
+            let Some(next_pid) = threads.runqueue.get_next() else {
+                return false;
             };
 
             if let Some(current_pid) = threads.current_pid() {
@@ -137,5 +133,9 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
         }) {
             break;
         }
+        // The esp-hal implementation of critical-section doesn't disable all interrupts.
+        // Thus we should release our hold on `THREADS` before we `waiti`, to prevent
+        // that another interrupt handler will try to borrow it while we still have it borrowed.
+        unsafe { core::arch::asm!("waiti 0") };
     }
 }
