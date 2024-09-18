@@ -225,7 +225,7 @@ impl Threads {
                 #[cfg(not(feature = "multicore"))]
                 {
                     self.runqueue.add(pid, prio);
-                    if prio > self.get_unchecked_mut(pid).prio {
+                    if Some(prio) > self.current().map(|t| t.prio) {
                         schedule()
                     }
                 }
