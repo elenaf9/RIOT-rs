@@ -238,7 +238,7 @@ impl Threads {
                     }
                     self.runqueue.add(pid, prio);
                     let (core, lowest_prio) = self.lowest_running_prio(pid);
-                    if lowest_prio <= Some(prio) {
+                    if lowest_prio < Some(prio) {
                         schedule_on_core(core);
                     }
                 }
