@@ -206,10 +206,10 @@ mod clist {
             let mut empty_runqueue = None;
 
             // Find previous thread in circular runqueue.
-            let prev = self.next_idxs.iter().position(|&next| next == n)?;
+            let prev = position(self.next_idxs.iter(), |&next| next == n)?;
 
             // Handle if thread is tail of a runqueue.
-            if let Some(rq) = self.tail.iter().position(|&tail| tail == n) {
+            if let Some(rq) = position(self.tail.iter(), |&tail| tail == n) {
                 if prev == n as usize {
                     // Runqueue is empty now.
                     self.tail[rq] = Self::sentinel();
@@ -256,6 +256,21 @@ mod clist {
                 self.tail[rq as usize] = head;
             }
         }
+    }
+
+    /// Helper function that is needed because hax doesn't support `Iterator::next` yet.
+    fn position<P>(mut iter: core::slice::Iter<u8>, mut predicate: P) -> Option<usize>
+    where
+        P: FnMut(&u8) -> bool,
+    {
+        let mut index = 0;
+        while let Some(next) = iter.next() {
+            if predicate(next) {
+                return Some(index);
+            }
+            index += 1;
+        }
+        None
     }
 
     #[cfg(test)]
