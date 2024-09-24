@@ -259,9 +259,9 @@ mod clist {
     }
 
     /// Helper function that is needed because hax doesn't support `Iterator::next` yet.
-    fn position<const N: usize, P>(slice: &[u8; N], mut predicate: P) -> Option<usize>
+    fn position<const N: usize, P>(slice: &[u8; N], predicate: P) -> Option<usize>
     where
-        P: FnMut(&u8) -> bool,
+        P: Fn(&u8) -> bool,
     {
         let mut index = None;
         for i in 0..N {
