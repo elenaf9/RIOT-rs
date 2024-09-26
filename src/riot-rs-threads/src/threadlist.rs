@@ -57,6 +57,17 @@ impl ThreadList {
         Some((head, old_state))
     }
 
+    /// Removes all threads from this [`ThreadList`].
+    ///
+    /// The state of each thread in the list is set to [`ThreadState::Running`], and
+    /// the scheduler is triggered if at least one thread was in the list.
+    pub fn drain(&mut self, threads: &mut Threads) {
+        while let Some(head) = self.head {
+            threads.set_state(head, ThreadState::Running);
+            self.head = threads.thread_blocklist[usize::from(head)].take();
+        }
+    }
+
     /// Determines if this [`ThreadList`] is empty.
     pub fn is_empty(&self) -> bool {
         self.head.is_none()
