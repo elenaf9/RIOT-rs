@@ -1,0 +1,5 @@
+apps:
+  - name: threading-condvar
+    selects:
+      - ?release
+      - sw/threading

@@ -4198,6 +4198,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "threading-condvar"
+version = "0.1.0"
+dependencies = [
+ "portable-atomic",
+ "riot-rs",
+ "riot-rs-boards",
+]
+
+[[package]]
 name = "threading-dynamic-prios"
 version = "0.1.0"
 dependencies = [
