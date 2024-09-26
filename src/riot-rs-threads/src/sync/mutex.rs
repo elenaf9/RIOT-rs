@@ -140,6 +140,12 @@ pub struct MutexGuard<'a, T> {
     mutex: &'a Mutex<T>,
 }
 
+impl<'a, T> MutexGuard<'a, T> {
+    pub(crate) fn guard_lock(&self) -> &'a Mutex<T> {
+        self.mutex
+    }
+}
+
 impl<'a, T> Deref for MutexGuard<'a, T> {
     type Target = T;
 

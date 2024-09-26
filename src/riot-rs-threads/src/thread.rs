@@ -37,7 +37,7 @@ pub enum ThreadState {
     Running,
     /// Suspended / paused.
     Paused,
-    /// Waiting to acquire a [`super::lock::Lock`].
+    /// Waiting to acquire a [`super::sync::Lock`].
     LockBlocked,
     /// Waiting for [`ThreadFlags`] to be set.
     FlagBlocked(crate::thread_flags::WaitMode),
@@ -45,6 +45,8 @@ pub enum ThreadState {
     ChannelRxBlocked(usize),
     /// Waiting to send on a [`crate::sync::Channel`], i.e. waiting for the receiver.
     ChannelTxBlocked(usize),
+    /// Waiting for a [`super::sync::Condvar`].
+    CondVarBlocked,
 }
 
 impl Thread {
