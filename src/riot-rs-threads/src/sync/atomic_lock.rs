@@ -4,8 +4,6 @@ use core::{cell::UnsafeCell, sync::atomic::Ordering, usize};
 use critical_section::CriticalSection;
 use portable_atomic::AtomicUsize;
 
-use crate::smp::NoPreemptionToken;
-
 /// A basic spinlock.
 pub struct AtomicLock<T> {
     state: AtomicUsize,
@@ -21,7 +19,7 @@ impl<T> AtomicLock<T> {
         }
     }
 
-    pub fn with<'a, F, R>(&self, _: &mut NoPreemptionToken, f: F) -> R
+    pub fn with<'a, F, R>(&self, f: F) -> R
     where
         F: FnOnce(&T) -> R,
     {
@@ -55,7 +53,7 @@ impl<T> AtomicLock<T> {
         res
     }
 
-    pub fn with_mut<'a, F, R>(&self, _: &mut NoPreemptionToken, f: F) -> R
+    pub fn with_mut<'a, F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {
