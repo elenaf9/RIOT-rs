@@ -288,15 +288,6 @@ impl Threads {
         old_state
     }
 
-    /// Returns the state of a thread.
-    fn get_state(&self, thread_id: ThreadId) -> Option<ThreadState> {
-        if self.is_valid_pid(thread_id) {
-            Some(self.threads[usize::from(thread_id)].state)
-        } else {
-            None
-        }
-    }
-
     /// Returns the priority of a thread.
     fn get_priority(&self, thread_id: ThreadId) -> RunqueueId {
         self.get_unchecked(thread_id).prio
@@ -588,7 +579,7 @@ pub unsafe fn thread_create_raw(
     prio: u8,
     core_affinity: Option<CoreAffinity>,
 ) -> ThreadId {
-    THREADS.with_mut(|mut threads| {
+    THREADS.with_mut(|threads| {
         let thread_id = threads
             .create(func, arg, stack, RunqueueId::new(prio), core_affinity)
             .expect("Max `THREADS_NUMOF` concurrent threads should be created.");
@@ -636,7 +627,7 @@ fn cleanup() -> ! {
 
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
-    if THREADS.with_mut(|mut threads| {
+    if THREADS.with_mut(|threads| {
         let Some(rq) = threads.current().map(|t| t.prio) else {
             return false;
         };
@@ -658,7 +649,7 @@ pub fn yield_same() {
 
 /// Suspends/ pauses the current thread's execution.
 pub fn sleep() {
-    THREADS.with_mut(|mut threads| {
+    THREADS.with_mut(|threads| {
         let Some(pid) = threads.current_pid() else {
             return;
         };
@@ -670,10 +661,12 @@ pub fn sleep() {
 ///
 /// Returns `false` if no paused thread exists for `thread_id`.
 pub fn wakeup(thread_id: ThreadId) -> bool {
-    THREADS.with_mut(|mut threads| {
-        match threads.get_state(thread_id) {
-            Some(ThreadState::Paused) => {}
-            _ => return false,
+    THREADS.with_mut(|threads| {
+        if usize::from(thread_id) >= THREADS_NUMOF {
+            return false;
+        }
+        if threads.get_unchecked(thread_id).state != ThreadState::Paused {
+            return false;
         }
         threads.set_state(thread_id, ThreadState::Running);
         true
@@ -695,7 +688,7 @@ pub fn get_priority(thread_id: ThreadId) -> Option<RunqueueId> {
 ///
 /// This might trigger a context switch.
 pub fn set_priority(thread_id: ThreadId, prio: RunqueueId) {
-    THREADS.with_mut(|mut threads| threads.set_priority(thread_id, prio))
+    THREADS.with_mut(|threads| threads.set_priority(thread_id, prio))
 }
 
 /// Returns the size of the internal structure that holds the

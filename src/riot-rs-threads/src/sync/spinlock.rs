@@ -28,14 +28,14 @@ impl<T> Spinlock<T> {
         }
     }
 
-    pub fn with<'a, F, R>(&self, tkn: &mut <Chip as Multicore>::NoPreemptionToken<'_>, f: F) -> R
+    pub fn with<'a, F, R>(&self, f: F) -> R
     where
         F: FnOnce(&T) -> R,
     {
-        while !Chip::multicore_lock_with(tkn, |cs| self.try_acquire(cs)) {}
+        while !Chip::multicore_lock_with(|cs| self.try_acquire(cs)) {}
         let inner = unsafe { &*self.inner.get() };
         let res = f(inner);
-        Chip::multicore_lock_with(tkn, |cs| self.release(cs));
+        Chip::multicore_lock_with(|cs| self.release(cs));
         res
     }
 
@@ -50,18 +50,14 @@ impl<T> Spinlock<T> {
         res
     }
 
-    pub fn with_mut<'a, F, R>(
-        &self,
-        tkn: &mut <Chip as Multicore>::NoPreemptionToken<'_>,
-        f: F,
-    ) -> R
+    pub fn with_mut<'a, F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {
-        while !Chip::multicore_lock_with(tkn, |cs| self.try_acquire_mut(cs)) {}
+        while !Chip::multicore_lock_with(|cs| self.try_acquire_mut(cs)) {}
         let inner = unsafe { &mut *self.inner.get() };
         let res = f(inner);
-        Chip::multicore_lock_with(tkn, |cs| self.release(cs));
+        Chip::multicore_lock_with(|cs| self.release(cs));
         res
     }
 

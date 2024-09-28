@@ -92,7 +92,7 @@ impl<T> Mutex<T> {
     ///
     /// Panics if called outside of a thread context.
     pub fn try_lock(&self) -> Option<MutexGuard<T>> {
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let thread = threads.current().unwrap();
             let state = unsafe { &mut *self.state.get() };
             match state {
