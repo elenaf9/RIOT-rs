@@ -194,9 +194,7 @@ unsafe extern "C" fn PendSV() {
 #[no_mangle]
 unsafe fn sched() -> u128 {
     loop {
-        if let Some(res) = crate::critical_section_with(|cs| {
-            let threads = unsafe { &mut *THREADS.as_ptr(cs) };
-
+        if let Some(res) = THREADS.with_mut(|threads| {
             #[cfg(feature = "multi-core")]
             threads.add_current_thread_to_rq();
 

@@ -74,7 +74,7 @@ cfg_if::cfg_if! {
             }
 
             fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R{
-                critical_section::with(|cs| f())
+                critical_section::with(|_cs| f())
             }
 
             fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
