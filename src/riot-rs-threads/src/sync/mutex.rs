@@ -92,7 +92,7 @@ impl<T> Mutex<T> {
     ///
     /// Panics if called outside of a thread context.
     pub fn try_lock(&self) -> Option<MutexGuard<T>> {
-        THREADS.with_mut(|mut threads| {
+        THREADS.with_mut(|threads| {
             let thread = threads.current().unwrap();
             let state = unsafe { &mut *self.state.get() };
             match state {
@@ -125,7 +125,7 @@ impl<T> Mutex<T> {
                     threads.set_priority(*owner_id, *owner_prio);
                     if let Some((pid, _)) = waiters.pop(&mut threads) {
                         *owner_id = pid;
-                        *owner_prio = threads.get_priority(pid);
+                        *owner_prio = threads.get_unchecked(pid).prio;
                     } else {
                         *state = LockState::Unlocked
                     }

@@ -20,11 +20,11 @@ impl<T> CsLock<T> {
         }
     }
 
-    pub fn with<F, R>(&self, tkn: &mut <Chip as Multicore>::NoPreemptionToken<'_>, f: F) -> R
+    pub fn with<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&T) -> R,
     {
-        Chip::multicore_lock_with(tkn, |cs| self.with_cs(cs, f))
+        Chip::multicore_lock_with(|cs| self.with_cs(cs, f))
     }
 
     pub fn with_cs<F, R>(&self, _cs: CriticalSection, f: F) -> R
@@ -35,11 +35,11 @@ impl<T> CsLock<T> {
         f(inner)
     }
 
-    pub fn with_mut<F, R>(&self, tkn: &mut <Chip as Multicore>::NoPreemptionToken<'_>, f: F) -> R
+    pub fn with_mut<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {
-        Chip::multicore_lock_with(tkn, |cs| self.with_mut_cs(cs, f))
+        Chip::multicore_lock_with(|cs| self.with_mut_cs(cs, f))
     }
 
     pub fn with_mut_cs<F, R>(&self, _cs: CriticalSection, f: F) -> R
