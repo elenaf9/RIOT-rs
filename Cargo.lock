@@ -3857,6 +3857,7 @@ dependencies = [
  "linkme",
  "panic-semihosting",
  "paste",
+ "portable-atomic",
  "riot-rs-runqueue",
  "riot-rs-utils",
  "rp-pac 6.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
