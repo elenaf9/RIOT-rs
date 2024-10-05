@@ -1,6 +1,6 @@
 use critical_section::CriticalSection;
 
-use crate::{thread::Thread, ThreadId, ThreadState, THREADS};
+use crate::{ThreadId, ThreadState, THREADS};
 
 /// Manages blocked [`super::Thread`]s for a resource, and triggering the scheduler when needed.
 #[derive(Debug, Default)]
@@ -21,22 +21,24 @@ impl ThreadList {
     ///
     /// Panics if this is called outside of a thread context.
     pub fn put_current(&mut self, cs: CriticalSection, state: ThreadState) {
-        THREADS.with_mut_cs(cs, |threads| {
-            let &mut Thread { pid, prio, .. } = threads
-                .current()
+        THREADS.with_cs(cs, |threads| {
+            let pid = threads
+                .current_pid()
                 .expect("Function should be called inside a thread context.");
+            let prio = threads.get_priority(pid);
             let mut curr = None;
             let mut next = self.head;
+            let mut thread_blocklist = threads.thread_blocklist.lock();
             while let Some(n) = next {
-                if threads.get_unchecked_mut(n).prio < prio {
+                if threads.get_priority(n) < prio {
                     break;
                 }
                 curr = next;
-                next = threads.thread_blocklist[usize::from(n)];
+                next = thread_blocklist[usize::from(n)];
             }
-            threads.thread_blocklist[usize::from(pid)] = next;
+            thread_blocklist[usize::from(pid)] = next;
             match curr {
-                Some(curr) => threads.thread_blocklist[usize::from(curr)] = Some(pid),
+                Some(curr) => thread_blocklist[usize::from(curr)] = Some(pid),
                 _ => self.head = Some(pid),
             }
             threads.set_state(pid, state);
@@ -51,8 +53,8 @@ impl ThreadList {
     /// Returns the thread's [`ThreadId`] and its previous [`ThreadState`].
     pub fn pop(&mut self, cs: CriticalSection) -> Option<(ThreadId, ThreadState)> {
         let head = self.head?;
-        THREADS.with_mut_cs(cs, |threads| {
-            self.head = threads.thread_blocklist[usize::from(head)].take();
+        THREADS.with_cs(cs, |threads| {
+            self.head = threads.thread_blocklist.lock()[usize::from(head)].take();
             let old_state = threads.set_state(head, ThreadState::Running);
             Some((head, old_state))
         })

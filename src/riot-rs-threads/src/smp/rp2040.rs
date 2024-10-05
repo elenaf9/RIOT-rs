@@ -1,9 +1,8 @@
 use crate::arch::{Arch as _, Cpu};
 
-use internal_critical_section::SpinlockCS;
+use internal_cs::Spinlock;
 
 use cortex_m::peripheral::SCB;
-use critical_section::CriticalSection;
 use embassy_rp::{
     interrupt,
     interrupt::InterruptExt as _,
@@ -19,6 +18,8 @@ pub struct Chip;
 
 impl Multicore for Chip {
     const CORES: u32 = 2;
+
+    type LockRestoreState = ();
 
     fn core_id() -> CoreId {
         CoreId(SIO.cpuid().read() as u8)
@@ -54,9 +55,12 @@ impl Multicore for Chip {
         cortex_m::interrupt::free(|_| f())
     }
 
-    fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
-        let _lock = SpinlockCS::acquire();
-        unsafe { f(CriticalSection::new()) }
+    fn multicore_lock_acquire<const N: usize>() -> Self::LockRestoreState {
+        Spinlock::<N>::acquire()
+    }
+
+    fn multicore_lock_release<const N: usize>(_: Self::LockRestoreState) {
+        Spinlock::<N>::release()
     }
 }
 
@@ -100,7 +104,8 @@ fn handle_fifo_token(token: u32) -> bool {
     true
 }
 
-mod internal_critical_section {
+mod internal_cs {
+
     use core::sync::atomic::{compiler_fence, Ordering};
 
     use rp_pac::SIO;
@@ -108,17 +113,15 @@ mod internal_critical_section {
     pub struct Spinlock<const N: usize>;
 
     impl<const N: usize> Spinlock<N> {
-        pub fn acquire() -> Self {
+        pub fn acquire() {
             // Ensure the compiler doesn't re-order accesses and violate safety here
             compiler_fence(Ordering::Acquire);
             // Spin until we get the lock.
             while SIO.spinlock(N).read() == 0 {}
             // If we broke out of the loop we have just acquired the lock
-            // We want to remember the interrupt status to restore later
-            Self
         }
 
-        fn release(&mut self) {
+        pub fn release() {
             // Release the spinlock to allow others to enter critical_section again
             SIO.spinlock(N).write_value(1);
             // Ensure the compiler doesn't re-order accesses and violate safety here
@@ -128,9 +131,10 @@ mod internal_critical_section {
 
     impl<const N: usize> Drop for Spinlock<N> {
         fn drop(&mut self) {
-            self.release()
+            Self::release()
         }
     }
 
+    #[allow(unused)]
     pub type SpinlockCS = Spinlock<30>;
 }

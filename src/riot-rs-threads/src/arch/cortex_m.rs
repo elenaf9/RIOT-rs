@@ -194,7 +194,7 @@ unsafe extern "C" fn PendSV() {
 #[no_mangle]
 unsafe fn sched() -> u128 {
     loop {
-        if let Some(res) = THREADS.with_mut(|threads| {
+        if let Some(res) = THREADS.with(|threads| {
             #[cfg(feature = "multi-core")]
             threads.add_current_thread_to_rq();
 
@@ -214,27 +214,25 @@ unsafe fn sched() -> u128 {
                 }
             };
 
+            let mut tcbs = threads.threads.lock();
             // `current_high_regs` will be null if there is no current thread.
             // This is only the case once, when the very first thread starts running.
             // The returned `r1` therefore will be null, and saving/ restoring
             // the context is skipped.
             let mut current_high_regs = core::ptr::null();
-            if let Some(ref mut current_pid_ref) = threads.current_pid_mut() {
-                if next_pid == *current_pid_ref {
+            if let Some(current_pid) = threads.current_pid() {
+                if next_pid == current_pid {
                     return Some(0);
                 }
-                let current_pid = *current_pid_ref;
-                *current_pid_ref = next_pid;
-                let current = threads.get_unchecked_mut(current_pid);
+                let current = &mut tcbs[usize::from(current_pid)];
                 current.sp = cortex_m::register::psp::read() as usize;
                 current_high_regs = current.data.as_ptr();
-            } else {
-                *threads.current_pid_mut() = Some(next_pid);
-            }
+            };
+            threads.set_current_pid(next_pid);
 
-            let next = threads.get_unchecked(next_pid);
-            let next_high_regs = next.data.as_ptr();
+            let next = &tcbs[usize::from(next_pid)];
             let next_sp = next.sp;
+            let next_high_regs = next.data.as_ptr();
 
             // The caller (`PendSV`) expects these three pointers in r0, r1 and r2:
             // r0 = &next.sp

@@ -103,7 +103,7 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 /// context switching.
 unsafe fn sched(trap_frame: &mut TrapFrame) {
     loop {
-        if THREADS.with_mut(|threads| {
+        if THREADS.with(|threads| {
             #[cfg(feature = "multi-core")]
             threads.add_current_thread_to_rq();
 
@@ -111,15 +111,19 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
                 return false;
             };
 
+            let mut tcbs = threads.threads.lock();
             if let Some(current_pid) = threads.current_pid() {
                 if next_pid == current_pid {
                     return true;
                 }
-                threads.threads[usize::from(current_pid)].data = *trap_frame;
-            }
-            *threads.current_pid_mut() = Some(next_pid);
 
-            *trap_frame = threads.threads[usize::from(next_pid)].data;
+                let current = &mut tcbs[usize::from(current_pid)];
+                current.data = *trap_frame;
+            }
+            threads.set_current_pid(next_pid);
+
+            let next = &tcbs[usize::from(next_pid)];
+            *trap_frame = next.data;
             true
         }) {
             break;

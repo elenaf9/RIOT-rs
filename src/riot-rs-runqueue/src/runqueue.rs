@@ -169,7 +169,7 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
     }
 
     /// Checks if a runqueue is empty.
-    pub fn is_empty(&mut self, rq: RunqueueId) -> bool {
+    pub fn is_empty(&self, rq: RunqueueId) -> bool {
         debug_assert!((rq.0 as usize) < N_QUEUES);
         self.queues.is_empty(rq.0)
     }

@@ -1,7 +1,10 @@
 //! This module provides a Spinlock implementation.
-use core::{cell::UnsafeCell, sync::atomic::Ordering};
+use core::{
+    cell::UnsafeCell,
+    ops::{Deref, DerefMut},
+    sync::atomic::Ordering,
+};
 
-use critical_section::CriticalSection;
 use portable_atomic::AtomicUsize;
 
 /// A basic spinlock.
@@ -19,22 +22,46 @@ impl<T> AtomicLock<T> {
         }
     }
 
-    pub fn with<'a, F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut T) -> R,
-    {
-        while self.state.swap(1, Ordering::Acquire) != 0 {}
-        let inner = unsafe { &mut *self.inner.get() };
-        let res = f(inner);
-        self.state.store(0, Ordering::Release);
-        res
+    pub fn lock(&self) -> AtomicLockGuard<T> {
+        while self.state.swap(1, Ordering::Acquire) > 0 {}
+        AtomicLockGuard { lock: self }
     }
 
-    pub fn with_cs<F, R>(&self, _: CriticalSection, f: F) -> R
-    where
-        F: FnOnce(&mut T) -> R,
-    {
-        self.with(f)
+    fn release(&self) {
+        self.state.store(0, Ordering::Release);
+    }
+}
+
+/// Grants access to a [`Mutex`] inner data.
+///
+/// Dropping the [`MutexGuard`] will unlock the [`Mutex`];
+pub struct AtomicLockGuard<'a, T> {
+    lock: &'a AtomicLock<T>,
+}
+
+impl<'a, T> AtomicLockGuard<'a, T> {
+    pub fn release(self) {
+        // dropping self will automatically release the lock.
+    }
+}
+
+impl<'a, T> Deref for AtomicLockGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.lock.inner.get() }
+    }
+}
+
+impl<'a, T> DerefMut for AtomicLockGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.lock.inner.get() }
+    }
+}
+
+impl<'a, T> Drop for AtomicLockGuard<'a, T> {
+    fn drop(&mut self) {
+        self.lock.release();
     }
 }
 unsafe impl<T> Sync for AtomicLock<T> {}

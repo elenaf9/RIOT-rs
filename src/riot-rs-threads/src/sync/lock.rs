@@ -1,7 +1,7 @@
 //! This module provides a Lock implementation.
 use core::cell::UnsafeCell;
 
-use crate::{critical_section_with, threadlist::ThreadList, ThreadState};
+use crate::{critical_section, threadlist::ThreadList, ThreadState};
 
 /// A basic locking object.
 ///
@@ -37,7 +37,7 @@ impl Lock {
     ///
     /// true if locked, false otherwise
     pub fn is_locked(&self) -> bool {
-        critical_section_with(|_| {
+        critical_section::with(|_| {
             let state = unsafe { &*self.state.get() };
             !matches!(state, LockState::Unlocked)
         })
@@ -53,7 +53,7 @@ impl Lock {
     ///
     /// Panics if this is called outside of a thread context.
     pub fn acquire(&self) {
-        critical_section_with(|cs| {
+        critical_section::with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => *state = LockState::Locked(ThreadList::new()),
@@ -69,9 +69,9 @@ impl Lock {
     /// If the lock was unlocked, it will be locked and the function returns true.
     /// If the lock was locked, the function returns false
     pub fn try_acquire(&self) -> bool {
-        critical_section_with(|_| {
+        critical_section::with(|_| {
             let state = unsafe { &mut *self.state.get() };
-            match state {
+            match *state {
                 LockState::Unlocked => {
                     *state = LockState::Locked(ThreadList::new());
                     true
@@ -88,7 +88,7 @@ impl Lock {
     /// If the lock was locked and there were no waiters, the lock will be unlocked.
     /// If the lock was not locked, the function just returns.
     pub fn release(&self) {
-        critical_section_with(|cs| {
+        critical_section::with(|cs| {
             let state = unsafe { &mut *self.state.get() };
             match state {
                 LockState::Unlocked => {}
