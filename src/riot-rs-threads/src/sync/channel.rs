@@ -4,7 +4,7 @@ use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
-use crate::critical_section_with as with;
+use crate::critical_section::with;
 use crate::threadlist::ThreadList;
 use crate::ThreadState;
 

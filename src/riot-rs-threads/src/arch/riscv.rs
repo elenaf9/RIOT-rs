@@ -128,7 +128,7 @@ extern "C" fn FROM_CPU_INTR0(trap_frame: &mut TrapFrame) {
 /// context switching.
 unsafe fn sched(trap_frame: &mut TrapFrame) {
     loop {
-        if THREADS.with_mut(|threads| {
+        if THREADS.with(|threads| {
             let next_pid = match threads.get_next_pid() {
                 Some(pid) => pid,
                 None => {
@@ -137,15 +137,18 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
                 }
             };
 
+            let mut tcbs = threads.threads.lock_mut();
             if let Some(current_pid) = threads.current_pid() {
                 if next_pid == current_pid {
                     return true;
                 }
-                copy_registers(trap_frame, threads.threads[usize::from(current_pid)].data);
+                let current = &mut tcbs[usize::from(current_pid)];
+                copy_registers(trap_frame, &mut current.data);
             }
-            *threads.current_pid_mut() = Some(next_pid);
+            threads.set_current_pid(next_pid);
 
-            copy_registers(&threads.get_unchecked(next_pid).data, trap_frame);
+            let next = &tcbs[usize::from(next_pid)];
+            copy_registers(&next.data, trap_frame);
             true
         }) {
             break;

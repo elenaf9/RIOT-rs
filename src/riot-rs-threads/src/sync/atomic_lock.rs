@@ -1,7 +1,11 @@
 //! This module provides a Spinlock implementation.
-use core::{cell::UnsafeCell, sync::atomic::Ordering, usize};
+use core::{
+    cell::UnsafeCell,
+    ops::{Deref, DerefMut},
+    sync::atomic::Ordering,
+    usize,
+};
 
-use critical_section::CriticalSection;
 use portable_atomic::AtomicUsize;
 
 /// A basic spinlock.
@@ -19,10 +23,7 @@ impl<T> AtomicLock<T> {
         }
     }
 
-    pub fn with<'a, F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
+    pub fn lock(&self) -> AtomicLockGuard<T> {
         while self
             .state
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |val| {
@@ -30,57 +31,82 @@ impl<T> AtomicLock<T> {
             })
             .is_err()
         {}
-        let inner = unsafe { &*self.inner.get() };
-        let res = f(inner);
-        self.state.sub(1, Ordering::AcqRel);
-        res
+        AtomicLockGuard { lock: self }
     }
 
-    pub fn with_cs<F, R>(&self, _: CriticalSection, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
-        while self
-            .state
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |val| {
-                (val < usize::MAX).then_some(val + 1)
-            })
-            .is_err()
-        {}
-        let inner = unsafe { &*self.inner.get() };
-        let res = f(inner);
-        self.state.sub(1, Ordering::AcqRel);
-        res
-    }
-
-    pub fn with_mut<'a, F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut T) -> R,
-    {
+    pub fn lock_mut(&self) -> AtomicLockGuardMut<T> {
         while self
             .state
             .compare_exchange(0, usize::MAX, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {}
-        let inner = unsafe { &mut *self.inner.get() };
-        let res = f(inner);
-        self.state.store(0, Ordering::Release);
-        res
+        AtomicLockGuardMut { lock: self }
     }
 
-    pub fn with_mut_cs<F, R>(&self, _: CriticalSection, f: F) -> R
-    where
-        F: FnOnce(&mut T) -> R,
-    {
-        while self
-            .state
-            .compare_exchange(0, usize::MAX, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {}
-        let inner = unsafe { &mut *self.inner.get() };
-        let res = f(inner);
+    fn release(&self) {
+        self.state.sub(1, Ordering::AcqRel);
+    }
+
+    fn release_mut(&self) {
         self.state.store(0, Ordering::Release);
-        res
     }
 }
+
+/// Grants access to a [`Mutex`] inner data.
+///
+/// Dropping the [`MutexGuard`] will unlock the [`Mutex`];
+pub struct AtomicLockGuard<'a, T> {
+    lock: &'a AtomicLock<T>,
+}
+
+impl<'a, T> AtomicLockGuard<'a, T> {
+    pub fn release(self) {
+        // dropping self will automatically release the lock.
+    }
+}
+
+impl<'a, T> Deref for AtomicLockGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.lock.inner.get() }
+    }
+}
+
+impl<'a, T> Drop for AtomicLockGuard<'a, T> {
+    fn drop(&mut self) {
+        self.lock.release();
+    }
+}
+
+pub struct AtomicLockGuardMut<'a, T> {
+    lock: &'a AtomicLock<T>,
+}
+
+impl<'a, T> AtomicLockGuardMut<'a, T> {
+    pub fn release(self) {
+        // dropping self will automatically release the lock.
+    }
+}
+
+impl<'a, T> Deref for AtomicLockGuardMut<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.lock.inner.get() }
+    }
+}
+
+impl<'a, T> DerefMut for AtomicLockGuardMut<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.lock.inner.get() }
+    }
+}
+
+impl<'a, T> Drop for AtomicLockGuardMut<'a, T> {
+    fn drop(&mut self) {
+        self.lock.release_mut();
+    }
+}
+
 unsafe impl<T> Sync for AtomicLock<T> {}

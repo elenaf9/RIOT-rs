@@ -1,4 +1,3 @@
-use critical_section::CriticalSection;
 use esp_hal::{
     cpu_control::{CpuControl, Stack},
     interrupt,
@@ -23,6 +22,8 @@ pub struct Chip;
 impl Multicore for Chip {
     const CORES: u32 = 2;
     const IDLE_THREAD_STACK_SIZE: usize = 2048;
+
+    type LockRestoreState = ();
 
     fn core_id() -> CoreId {
         esp_hal::get_core().into()
@@ -92,9 +93,13 @@ impl Multicore for Chip {
         f()
     }
 
-    fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
-        let _guard = internal_critical_section::acquire();
-        unsafe { f(CriticalSection::new()) }
+    fn multicore_lock_acquire<const N: usize>() -> Self::LockRestoreState {
+        debug_assert!(N < (usize::BITS as usize - 1));
+        internal_critical_section::acquire();
+    }
+
+    fn multicore_lock_release<const N: usize>(_state: Self::LockRestoreState) {
+        internal_critical_section::release();
     }
 }
 
@@ -103,27 +108,16 @@ mod internal_critical_section {
 
     static MULTICORE_LOCK: AtomicUsize = AtomicUsize::new(0);
 
-    pub struct Guard;
-
-    impl Guard {
-        fn release(&mut self) {
-            MULTICORE_LOCK.store(0, Ordering::Relaxed);
-            // Ensure the compiler doesn't re-order accesses and violate safety here
-            core::sync::atomic::compiler_fence(Ordering::Release);
-        }
+    pub fn release() {
+        MULTICORE_LOCK.store(0, Ordering::Relaxed);
+        // Ensure the compiler doesn't re-order accesses and violate safety here
+        core::sync::atomic::compiler_fence(Ordering::Release);
     }
 
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            self.release()
-        }
-    }
-
-    pub fn acquire() -> Guard {
+    pub fn acquire() {
         // Ensure the compiler doesn't re-order accesses and violate safety here
         core::sync::atomic::compiler_fence(Ordering::Acquire);
         while MULTICORE_LOCK.swap(1, Ordering::Relaxed) > 0 {}
-        Guard
     }
 }
 
