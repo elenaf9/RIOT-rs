@@ -1,10 +1,12 @@
-use critical_section::CriticalSection;
+use core::sync::atomic::Ordering;
+
 use esp_hal::{
     cpu_control::{CpuControl, Stack},
     interrupt,
     peripherals::{Interrupt, CPU_CTRL, SYSTEM},
     Cpu,
 };
+use portable_atomic::AtomicUsize;
 use static_cell::ConstStaticCell;
 
 use super::{CoreId, Multicore};
@@ -18,11 +20,15 @@ impl From<Cpu> for CoreId {
     }
 }
 
+static MULTICORE_LOCK: AtomicUsize = AtomicUsize::new(0);
+
 pub struct Chip;
 
 impl Multicore for Chip {
     const CORES: u32 = 2;
     const IDLE_THREAD_STACK_SIZE: usize = 2048;
+
+    type LockRestoreState = ();
 
     fn core_id() -> CoreId {
         esp_hal::get_core().into()
@@ -87,10 +93,39 @@ impl Multicore for Chip {
     }
 
     fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R {
-        critical_section::with(|_| f())
+        // Copied from `esp_hal::critical_section_impl::xtensa::acquire`
+        let mut tkn: u32;
+        unsafe {
+            core::arch::asm!("rsil {0}, 5", out(reg) tkn);
+        }
+
+        // Use guard to ensure that the interrupts will always be unmasked again.
+        struct Guard {
+            tkn: u32,
+        }
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                // Copied from `esp_hal::critical_section_impl::xtensa::release`
+                const RESERVED_MASK: u32 = 0b1111_1111_1111_1000_1111_0000_0000_0000;
+                debug_assert!(self.tkn & RESERVED_MASK == 0);
+                unsafe {
+                    core::arch::asm!(
+                        "wsr.ps {0}",
+                        "rsync", in(reg) self.tkn)
+                }
+            }
+        }
+        // Guard will be dropped if the function finished running or panicked.
+        let _guard = Guard { tkn };
+        f()
     }
 
-    fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection) -> R) -> R {
-        unsafe { f(CriticalSection::new()) }
+    fn multicore_lock_acquire<const N: usize>() -> Self::LockRestoreState {
+        debug_assert!(N < (usize::BITS as usize - 1));
+        while MULTICORE_LOCK.bit_set(N as u32, Ordering::Acquire) {}
+    }
+
+    fn multicore_lock_release<const N: usize>(_state: Self::LockRestoreState) {
+        MULTICORE_LOCK.bit_clear(N as u32, Ordering::Release);
     }
 }

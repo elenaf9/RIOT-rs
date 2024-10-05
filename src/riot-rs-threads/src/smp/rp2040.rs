@@ -1,9 +1,8 @@
 use crate::arch::{Arch as _, Cpu};
 
-use internal_critical_section::SpinlockCS;
+use internal_cs::Spinlock;
 
 use cortex_m::peripheral::SCB;
-use critical_section::CriticalSection;
 use embassy_rp::{
     interrupt,
     interrupt::InterruptExt as _,
@@ -19,6 +18,8 @@ pub struct Chip;
 
 impl Multicore for Chip {
     const CORES: u32 = 2;
+
+    type LockRestoreState = ();
 
     fn core_id() -> CoreId {
         CoreId(SIO.cpuid().read() as u8)
@@ -53,9 +54,12 @@ impl Multicore for Chip {
         internal_preemption_lock::with(|| f())
     }
 
-    fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
-        let _lock = unsafe { SpinlockCS::acquire() };
-        unsafe { f(CriticalSection::new()) }
+    fn multicore_lock_acquire<const N: usize>() -> Self::LockRestoreState {
+        unsafe { Spinlock::<N>::acquire() }
+    }
+
+    fn multicore_lock_release<const N: usize>(_: Self::LockRestoreState) {
+        unsafe { Spinlock::<N>::release() }
     }
 }
 
@@ -109,30 +113,20 @@ fn handle_fifo_msg() {
     }
 }
 
-mod internal_critical_section {
+mod internal_cs {
+    use critical_section::CriticalSection;
     use rp_pac::SIO;
 
     pub struct Spinlock<const N: usize>;
 
     impl<const N: usize> Spinlock<N> {
-        pub unsafe fn acquire() -> Self {
+        pub unsafe fn acquire() {
             // Spin until we get the lock
-            loop {
-                // Need to disable interrupts to ensure that we will not deadlock
-                // if an interrupt enters critical_section::Impl after we acquire the lock
-                cortex_m::interrupt::disable();
-                // Read the spinlock reserved for the internal `critical_section`
-                if SIO.spinlock(N).read() > 0 {
-                    // We just acquired the lock.
-                    break;
-                }
-            }
+            while SIO.spinlock(N).read() == 0 {}
             // If we broke out of the loop we have just acquired the lock
-            // We want to remember the interrupt status to restore later
-            Self
         }
 
-        unsafe fn release(&mut self) {
+        pub unsafe fn release() {
             // Release the spinlock to allow others to enter critical_section again
             SIO.spinlock(N).write_value(1);
         }
@@ -141,10 +135,18 @@ mod internal_critical_section {
     impl<const N: usize> Drop for Spinlock<N> {
         fn drop(&mut self) {
             // This is safe because we own the object, and hence hold the lock.
-            unsafe { self.release() }
+            unsafe { Self::release() }
         }
     }
 
+    #[allow(unused)]
+    pub fn with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+        unsafe { SpinlockCS::acquire() };
+        let _lock = SpinlockCS {};
+        unsafe { f(CriticalSection::new()) }
+    }
+
+    #[allow(unused)]
     pub type SpinlockCS = Spinlock<30>;
 }
 
