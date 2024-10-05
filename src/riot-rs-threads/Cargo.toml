@@ -24,6 +24,7 @@ riot-rs-utils.workspace = true
 static_cell.workspace = true
 
 defmt = { workspace = true, optional = true }
+portable-atomic = { workspace = true }
 
 [target.'cfg(context = "esp32c3")'.dependencies]
 esp-hal = { workspace = true, features = ["esp32c3"] }
