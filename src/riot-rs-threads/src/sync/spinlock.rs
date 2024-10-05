@@ -28,7 +28,7 @@ impl<T> Spinlock<T> {
         }
     }
 
-    pub fn with<'a, F, R>(&self, f: F) -> R
+    pub fn with<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&T) -> R,
     {
@@ -50,7 +50,7 @@ impl<T> Spinlock<T> {
         res
     }
 
-    pub fn with_mut<'a, F, R>(&self, f: F) -> R
+    pub fn with_mut<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {

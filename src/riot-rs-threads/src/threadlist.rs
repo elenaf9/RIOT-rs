@@ -1,4 +1,4 @@
-use crate::{thread::Thread, RunqueueId, ThreadId, ThreadState, Threads};
+use crate::{RunqueueId, ThreadId, ThreadState, Threads};
 
 /// Manages blocked [`super::Thread`]s for a resource, and triggering the scheduler when needed.
 #[derive(Debug, Default)]
@@ -20,23 +20,31 @@ impl ThreadList {
     /// # Panics
     ///
     /// Panics if this is called outside of a thread context.
-    pub fn put_current(&mut self, threads: &mut Threads, state: ThreadState) -> Option<RunqueueId> {
-        let &mut Thread { pid, prio, .. } = threads
-            .current()
+    pub fn put_current<'a>(
+        &mut self,
+        threads: &'a Threads,
+        state: ThreadState,
+    ) -> Option<RunqueueId> {
+        let (pid, prio) = threads
+            .current_with(|t| t.map(|t| (t.pid, t.prio)))
             .expect("Function should be called inside a thread context.");
         let mut curr = None;
         let mut next = self.head;
         while let Some(n) = next {
-            if threads.get_unchecked_mut(n).prio < prio {
+            if threads.get_unchecked_with(n, |t| t.prio < prio) {
                 break;
             }
             curr = next;
-            next = threads.thread_blocklist[usize::from(n)];
+            next = threads.thread_blocklist.with(|bl| bl[usize::from(n)]);
         }
-        threads.thread_blocklist[usize::from(pid)] = next;
+        threads
+            .thread_blocklist
+            .with_mut(|bl| bl[usize::from(pid)] = next);
         let inherit_priority = match curr {
             Some(curr) => {
-                threads.thread_blocklist[usize::from(curr)] = Some(pid);
+                threads
+                    .thread_blocklist
+                    .with_mut(|bl| bl[usize::from(curr)] = Some(pid));
                 None
             }
             _ => {
@@ -54,9 +62,11 @@ impl ThreadList {
     /// the scheduler.
     ///
     /// Returns the thread's [`ThreadId`] and its previous [`ThreadState`].
-    pub fn pop(&mut self, threads: &mut Threads) -> Option<(ThreadId, ThreadState)> {
+    pub fn pop<'a>(&mut self, threads: &'a Threads) -> Option<(ThreadId, ThreadState)> {
         let head = self.head?;
-        self.head = threads.thread_blocklist[usize::from(head)].take();
+        self.head = threads
+            .thread_blocklist
+            .with_mut(|bl| bl[usize::from(head)].take());
         let old_state = threads.set_state(head, ThreadState::Running);
         Some((head, old_state))
     }
