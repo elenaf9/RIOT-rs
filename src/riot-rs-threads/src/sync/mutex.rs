@@ -5,7 +5,7 @@ use core::{
 
 use riot_rs_runqueue::{RunqueueId, ThreadId};
 
-use crate::{thread::ThreadState, threadlist::ThreadList, THREADS};
+use crate::{critical_section, thread::ThreadState, threadlist::ThreadList, THREADS};
 
 /// A basic mutex with priority inheritance.
 pub struct Mutex<T> {
@@ -38,7 +38,7 @@ impl<T> Mutex<T> {
     ///
     /// `true` if locked, `false` otherwise
     pub fn is_locked(&self) -> bool {
-        crate::critical_section_with(|_| {
+        critical_section::with(|_| {
             let state = unsafe { &*self.state.get() };
             !matches!(state, LockState::Unlocked)
         })
@@ -54,31 +54,34 @@ impl<T> Mutex<T> {
     ///
     /// Panics if called outside of a thread context.
     pub fn lock(&self) -> MutexGuard<T> {
-        THREADS.with_mut(|threads| {
-            let state = unsafe { &mut *self.state.get() };
-            match state {
-                LockState::Unlocked => {
-                    let thread = threads.current().unwrap();
-                    *state = LockState::Locked {
-                        waiters: ThreadList::new(),
-                        owner_id: thread.pid,
-                        owner_prio: thread.prio,
+        critical_section::with(|cs| {
+            THREADS.with_cs(cs, |threads| {
+                let state = unsafe { &mut *self.state.get() };
+                match state {
+                    LockState::Unlocked => {
+                        let owner_id = threads.current_pid().unwrap();
+                        let owner_prio = threads.get_priority(owner_id);
+                        *state = LockState::Locked {
+                            waiters: ThreadList::new(),
+                            owner_id,
+                            owner_prio,
+                        }
                     }
-                }
-                LockState::Locked {
-                    waiters,
-                    owner_id,
-                    owner_prio,
-                } => {
-                    if let Some(inherit_priority) =
-                        waiters.put_current(threads, ThreadState::LockBlocked)
-                    {
-                        if &inherit_priority > owner_prio {
-                            threads.set_priority(*owner_id, inherit_priority);
+                    LockState::Locked {
+                        waiters,
+                        owner_id,
+                        owner_prio,
+                    } => {
+                        if let Some(inherit_priority) =
+                            waiters.put_current(&threads, ThreadState::LockBlocked)
+                        {
+                            if inherit_priority > *owner_prio {
+                                threads.set_priority(*owner_id, inherit_priority);
+                            }
                         }
                     }
                 }
-            }
+            })
         });
         MutexGuard { mutex: self }
     }
@@ -92,20 +95,23 @@ impl<T> Mutex<T> {
     ///
     /// Panics if called outside of a thread context.
     pub fn try_lock(&self) -> Option<MutexGuard<T>> {
-        THREADS.with_mut(|threads| {
-            let thread = threads.current().unwrap();
-            let state = unsafe { &mut *self.state.get() };
-            match state {
-                LockState::Unlocked => {
-                    *state = LockState::Locked {
-                        waiters: ThreadList::new(),
-                        owner_id: thread.pid,
-                        owner_prio: thread.prio,
-                    };
-                    Some(MutexGuard { mutex: self })
+        critical_section::with(|cs| {
+            THREADS.with_cs(cs, |threads| {
+                let state = unsafe { &mut *self.state.get() };
+                let owner_id = threads.current_pid().unwrap();
+                let owner_prio = threads.get_priority(owner_id);
+                match state {
+                    LockState::Unlocked => {
+                        *state = LockState::Locked {
+                            waiters: ThreadList::new(),
+                            owner_id,
+                            owner_prio,
+                        };
+                        Some(MutexGuard { mutex: self })
+                    }
+                    _ => None,
                 }
-                _ => None,
-            }
+            })
         })
     }
 
@@ -113,24 +119,26 @@ impl<T> Mutex<T> {
     ///
     /// If there are waiters, the first waiter will be woken up.
     fn release(&self) {
-        THREADS.with_mut(|threads| {
-            let state = unsafe { &mut *self.state.get() };
-            match state {
-                LockState::Unlocked => {}
-                LockState::Locked {
-                    waiters,
-                    owner_id,
-                    owner_prio,
-                } => {
-                    threads.set_priority(*owner_id, *owner_prio);
-                    if let Some((pid, _)) = waiters.pop(threads) {
-                        *owner_id = pid;
-                        *owner_prio = threads.get_unchecked(pid).prio;
-                    } else {
-                        *state = LockState::Unlocked
+        critical_section::with(|cs| {
+            THREADS.with_cs(cs, |threads| {
+                let state = unsafe { &mut *self.state.get() };
+                match state {
+                    LockState::Unlocked => {}
+                    LockState::Locked {
+                        waiters,
+                        owner_id,
+                        owner_prio,
+                    } => {
+                        threads.set_priority(*owner_id, *owner_prio);
+                        if let Some((pid, _)) = waiters.pop(&threads) {
+                            *owner_id = pid;
+                            *owner_prio = threads.get_priority(pid);
+                        } else {
+                            *state = LockState::Unlocked
+                        }
                     }
                 }
-            }
+            })
         })
     }
 }
