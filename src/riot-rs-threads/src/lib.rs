@@ -34,6 +34,7 @@ mod autostart_thread;
 mod ensure_once;
 mod thread;
 mod threadlist;
+mod threads;
 
 // #[cfg(feature = "multicore")]
 mod smp;
@@ -49,6 +50,8 @@ pub mod macro_reexports {
     pub use static_cell;
 }
 
+use core::ops::{Deref, DerefMut};
+
 pub use riot_rs_runqueue::{RunqueueId, ThreadId};
 pub use thread_flags as flags;
 
@@ -62,7 +65,6 @@ pub use arch::schedule;
 
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
-use riot_rs_runqueue::RunQueue;
 use thread::{Thread, ThreadState};
 
 #[cfg(feature = "multicore")]
@@ -99,93 +101,13 @@ pub static THREAD_FNS: [ThreadFn] = [..];
 
 /// Struct holding all scheduler state
 struct Threads {
-    /// Global thread runqueue.
-    runqueue: sync::ILock<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>>,
-    /// The actual TCBs.
-    threads: sync::ILock<[Thread; THREADS_NUMOF]>,
-    /// `Some` when a thread is blocking another thread due to conflicting
-    /// resource access.
-    thread_blocklist: sync::ILock<[Option<ThreadId>; THREADS_NUMOF]>,
-
-    /// The currently running thread(s).
-    #[cfg(feature = "multicore")]
-    current_threads: sync::ILock<[Option<(ThreadId, RunqueueId)>; CORES_NUMOF]>,
-    #[cfg(not(feature = "multicore"))]
-    current_thread: sync::ILock<Option<(ThreadId, RunqueueId)>>,
+    inner: threads::Threads,
 }
 
 impl Threads {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            runqueue: sync::ILock::new(RunQueue::new()),
-            threads: sync::ILock::new([const { Thread::default() }; THREADS_NUMOF]),
-            thread_blocklist: sync::ILock::new([const { None }; THREADS_NUMOF]),
-            #[cfg(feature = "multicore")]
-            current_threads: sync::ILock::new([None; CORES_NUMOF]),
-            #[cfg(not(feature = "multicore"))]
-            current_thread: sync::ILock::new(None),
-        }
-    }
-
-    // pub(crate) fn by_pid_unckecked(&self, thread_id: ThreadId) -> &mut Thread {
-    //     &self.threads[thread_id as usize]
-    // }
-
-    /// Returns checked mutable access to the thread data of the currently
-    /// running thread.
-    ///
-    /// Returns `None` if there is no current thread.
-    // fn current_with(&self,) -> Option<sync::ILockGuard<Thread>> {
-    //     todo!();
-    //     // self.current_pid()
-    //     //     .map(|pid| self.threads.lock_mut()[usize::from(pid)])
-    // }
-
-    /// Returns the ID of the current thread, or [`None`] if no thread is currently
-    /// running.
-    ///
-    /// On multicore, it returns the ID of the thread that is running on the
-    /// current core.
-    #[inline]
-    fn current_pid(&self) -> Option<ThreadId> {
-        #[cfg(feature = "multicore")]
-        {
-            self.current_threads.lock()[usize::from(core_id())]
-                .unzip()
-                .0
-        }
-        #[cfg(not(feature = "multicore"))]
-        {
-            self.current_thread.lock().unzip().0
-        }
-    }
-
-    #[inline]
-    fn current_pid_prio(&self) -> Option<(ThreadId, RunqueueId)> {
-        #[cfg(feature = "multicore")]
-        {
-            self.current_threads.lock()[usize::from(core_id())]
-        }
-        #[cfg(not(feature = "multicore"))]
-        {
-            *self.current_thread.lock()
-        }
-    }
-
-    /// Returns a mutable reference to the current thread ID, or [`None`]
-    /// if no thread is currently running.
-    ///
-    /// On multicore, it refers to the ID of the thread that is running on the
-    /// current core.
-    #[allow(dead_code, reason = "used in scheduler implementation")]
-    fn set_current_pid(&self, pid: ThreadId, prio: RunqueueId) {
-        #[cfg(feature = "multicore")]
-        {
-            self.current_threads.lock_mut()[usize::from(core_id())] = Some((pid, prio))
-        }
-        #[cfg(not(feature = "multicore"))]
-        {
-            *self.current_thread.lock_mut() = Some((pid, prio))
+            inner: threads::Threads::new(),
         }
     }
 
@@ -195,82 +117,35 @@ impl Threads {
     ///
     /// Returns `None` if there is no free thread slot.
     fn create(
-        &self,
+        &mut self,
         func: usize,
         arg: usize,
         stack: &'static mut [u8],
         prio: RunqueueId,
         _core_affinity: Option<CoreAffinity>,
     ) -> Option<ThreadId> {
-        let thread_id = self.get_unused()?;
-        let thread = &mut self.threads.lock_mut()[usize::from(thread_id)];
-        Cpu::setup_stack(thread, stack, func, arg);
-        thread.prio = prio;
-        thread.pid = thread_id;
-        #[cfg(feature = "core-affinity")]
-        {
-            thread.core_affinity = _core_affinity.unwrap_or_default();
-        }
-
-        Some(thread_id)
-    }
-
-    /// Returns immutable access to any thread data.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `thread_id` is >= [`THREADS_NUMOF`].
-    /// If the thread for this `thread_id` is in an invalid state, the
-    /// data in the returned [`Thread`] is undefined, i.e. empty or outdated.
-    #[allow(dead_code, reason = "used in scheduler implementation")]
-    fn get_unchecked<'a, 'b: 'a>(
-        &self,
-        tcb: &'b sync::ILockGuard<[Thread; THREADS_NUMOF]>,
-        thread_id: ThreadId,
-    ) -> &'a Thread {
-        &tcb[usize::from(thread_id)]
-    }
-
-    /// Returns mutable access to any thread d
-
-    /// Returns mutable access to any thread data.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `thread_id` is >= [`THREADS_NUMOF`].
-    /// If the thread for this `thread_id` is in an invalid state, the
-    /// data in the returned [`Thread`] is undefined, i.e. empty or outdated.
-    fn get_unchecked_mut<'a, 'b: 'a>(
-        &self,
-        tcb: &'b mut sync::ILockGuardMut<[Thread; THREADS_NUMOF]>,
-        thread_id: ThreadId,
-    ) -> &'a mut Thread {
-        &mut tcb[usize::from(thread_id)]
-    }
-
-    fn get_property_unchecked<T>(&self, thread_id: ThreadId, f: fn(&Thread) -> T) -> T {
-        let tcbs = self.threads.lock();
-        f(&tcbs[usize::from(thread_id)])
-    }
-
-    /// Returns an unused ThreadId / Thread slot.
-    fn get_unused(&self) -> Option<ThreadId> {
-        let tcbs = self.threads.lock();
+        let mut tcbs = self.tcbs_mut();
         for i in 0..THREADS_NUMOF {
-            if tcbs[i].state == ThreadState::Invalid {
-                return Some(ThreadId::new(i as u8));
+            let thread_id = ThreadId::new(i as u8);
+            let thread = tcbs.get_unchecked_mut(thread_id);
+            if thread.state != ThreadState::Invalid {
+                continue;
             }
+            Cpu::setup_stack(thread, stack, func, arg);
+            thread.pid = thread_id;
+            thread.prio = prio;
+            #[cfg(feature = "core-affinity")]
+            {
+                thread.core_affinity = _core_affinity.unwrap_or_default();
+            }
+            return Some(thread_id);
         }
         None
     }
 
-    /// Checks if a thread with valid state exists for this `thread_id`.
-    fn is_valid_pid(&self, thread_id: ThreadId) -> bool {
-        if usize::from(thread_id) >= THREADS_NUMOF {
-            false
-        } else {
-            self.threads.lock()[usize::from(thread_id)].state != ThreadState::Invalid
-        }
+    /// Checks if a thread ID is in bound.
+    fn is_in_bound(&self, thread_id: ThreadId) -> bool {
+        usize::from(thread_id) < THREADS_NUMOF
     }
 
     /// Sets the state of a thread and triggers the scheduler if needed.
@@ -281,9 +156,9 @@ impl Threads {
     /// # Panics
     ///
     /// Panics if `pid` is >= [`THREADS_NUMOF`].
-    fn set_state(&self, pid: ThreadId, state: ThreadState) -> ThreadState {
-        let mut tcbs = self.threads.lock_mut();
-        let thread = self.get_unchecked_mut(&mut tcbs, pid);
+    fn set_state(&mut self, pid: ThreadId, state: ThreadState) -> ThreadState {
+        let mut tcbs = self.inner.tcbs_mut();
+        let thread = tcbs.get_unchecked_mut(pid);
         let old_state = core::mem::replace(&mut thread.state, state);
         let prio = thread.prio;
         tcbs.release();
@@ -300,18 +175,22 @@ impl Threads {
                     // The scheduler will re-add the thread to the runqueue in `sched`.
                     return old_state;
                 }
-                self.runqueue.lock_mut().add(pid, prio);
+                {
+                    self.inner.runqueue_mut().add(pid, prio);
+                }
                 self.schedule_if_higher_prio(pid, prio);
             }
             (ThreadState::Running, _) => {
                 // A running thread is only set into a non-running state
                 // if it itself initiated it.
-                debug_assert_eq!(Some(pid), self.current_pid());
+                debug_assert_eq!(Some(pid), self.inner.current_pid());
 
                 // On multicore, the currently running thread is not in the runqueue
                 // anyway, so we don't need to remove it here.
                 #[cfg(not(feature = "multicore"))]
-                self.runqueue.lock_mut().pop_head(pid, prio);
+                {
+                    self.runqueue_mut().pop_head(pid, prio);
+                }
 
                 schedule()
             }
@@ -320,18 +199,16 @@ impl Threads {
         old_state
     }
 
-    /// Returns the priority of a thread.
-    fn get_priority(&self, thread_id: ThreadId) -> RunqueueId {
-        self.threads.lock()[usize::from(thread_id)].prio
-    }
-
     /// Change the priority of a thread and triggers the scheduler if needed.
-    fn set_priority(&self, thread_id: ThreadId, new_prio: RunqueueId) {
-        if !self.is_valid_pid(thread_id) {
+    fn set_priority(&mut self, thread_id: ThreadId, new_prio: RunqueueId) {
+        if !self.is_in_bound(thread_id) {
             return;
         }
-        let mut tcbs = self.threads.lock_mut();
-        let thread = self.get_unchecked_mut(&mut tcbs, thread_id);
+        let mut tcbs = self.tcbs_mut();
+        let thread = tcbs.get_unchecked_mut(thread_id);
+        if thread.state == ThreadState::Invalid {
+            return;
+        }
         let old_prio = thread.prio;
         if old_prio == new_prio {
             return;
@@ -357,10 +234,11 @@ impl Threads {
         }
 
         // Update the runqueue.
-        let mut runqueue = self.runqueue.lock_mut();
-        runqueue.del(thread_id);
-        runqueue.add(thread_id, new_prio);
-        runqueue.release();
+        {
+            let mut runqueue = self.runqueue_mut();
+            runqueue.del(thread_id);
+            runqueue.add(thread_id, new_prio);
+        }
 
         // Check & handle if the thread is among the current threads for single-core,
         // analogous to the above multicore implementation.
@@ -370,7 +248,6 @@ impl Threads {
             Some(_) => return,
             _ => {}
         }
-
         // Thread isn't running.
         // Only schedule if the thread has a higher priority than a running one.
         if new_prio > old_prio {
@@ -380,7 +257,7 @@ impl Threads {
 
     /// Trigger the scheduler if the thread has higher priority than (one of)
     /// the running thread(s).
-    fn schedule_if_higher_prio(&self, _thread_id: ThreadId, prio: RunqueueId) {
+    fn schedule_if_higher_prio(&mut self, _thread_id: ThreadId, prio: RunqueueId) {
         #[cfg(not(feature = "multicore"))]
         match self.current_pid_prio() {
             Some((_, curr_prio)) if curr_prio < prio => schedule(),
@@ -397,7 +274,7 @@ impl Threads {
     ///
     /// On multicore, the core-id is returned as usize, on single-core
     /// the usize is always 0.
-    fn is_running(&self, thread_id: ThreadId) -> Option<usize> {
+    fn is_running(&mut self, thread_id: ThreadId) -> Option<usize> {
         #[cfg(not(feature = "multicore"))]
         {
             self.current_pid()
@@ -406,8 +283,7 @@ impl Threads {
 
         #[cfg(feature = "multicore")]
         {
-            self.current_threads
-                .lock()
+            self.current_threads()
                 .iter()
                 .position(|pid| pid.unzip().0 == Some(thread_id))
         }
@@ -417,13 +293,15 @@ impl Threads {
     /// runqueue if it has state [`ThreadState::Running`].
     #[cfg(feature = "multicore")]
     #[allow(dead_code, reason = "used in scheduler implementation")]
-    fn add_current_thread_to_rq(&self) {
+    fn add_current_thread_to_rq(&mut self) {
         let Some(current_pid) = self.current_pid() else {
             return;
         };
-        let (state, prio) = self.get_property_unchecked(current_pid, |t| (t.state, t.prio));
+        let tcbs = self.tcbs();
+        let &Thread { state, prio, .. } = tcbs.get_unchecked(current_pid);
+        tcbs.release();
         if state == ThreadState::Running {
-            self.runqueue.lock_mut().add(current_pid, prio);
+            self.runqueue_mut().add(current_pid, prio);
         }
     }
 
@@ -436,17 +314,17 @@ impl Threads {
     /// return a different thread. This prevents that a thread is picked multiple
     /// times by the scheduler when it is invoked on different cores.
     #[allow(dead_code, reason = "used in scheduler implementation")]
-    fn get_next_pid(&self) -> Option<ThreadId> {
+    fn get_next_pid(&mut self) -> Option<ThreadId> {
         // On single-core, only read the head of the runqueue.
         #[cfg(not(feature = "multicore"))]
         {
-            self.runqueue.lock().get_next()
+            self.runqueue().get_next()
         }
 
         // On multi-core, the head is popped of the runqueue.
         #[cfg(all(feature = "multicore", not(feature = "core-affinity")))]
         {
-            self.runqueue.lock_mut().pop_next()
+            self.runqueue_mut().pop_next()
         }
 
         // On multicore with core-affinities, only return the head of the runqueue if
@@ -454,10 +332,14 @@ impl Threads {
         // Otherwise iterated the runqueue until a thread with matching affinity is found.
         #[cfg(all(feature = "multicore", feature = "core-affinity"))]
         {
-            let mut runqueue = self.runqueue.lock_mut();
-            let next = runqueue.get_next_filter(|&t| self.is_affine_to_curr_core(t))?;
+            let mut guard = self.guard().with_mut_runqueue().with_tcbs();
+            let core = crate::core_id();
+            let next = guard.runqueue.get_next_filter(|&t| {
+                // Check if thread can be scheduled on the current core.
+                guard.tcbs.get_unchecked(t).core_affinity.contains(core)
+            })?;
             // Delete thread from runqueue to match the `pop_next`.
-            runqueue.del(next);
+            guard.runqueue.del(next);
             Some(next)
         }
     }
@@ -471,12 +353,11 @@ impl Threads {
     /// If core-affinities are enabled, the parameter `_pid` restricts the search to only
     /// consider the cores that match this thread's [`CoreAffinity`].
     #[cfg(feature = "multicore")]
-    fn lowest_running_prio(&self, _pid: ThreadId) -> (CoreId, Option<RunqueueId>) {
+    fn lowest_running_prio(&mut self, _pid: ThreadId) -> (CoreId, Option<RunqueueId>) {
         #[cfg(feature = "core-affinity")]
-        let affinity = self.get_property_unchecked(_pid, |t| t.core_affinity);
+        let affinity = self.tcbs().get_unchecked(_pid).core_affinity;
         // Find the lowest priority thread among the currently running threads.
-        self.current_threads
-            .lock()
+        self.current_threads()
             .iter()
             .enumerate()
             .filter_map(|(core, thread)| {
@@ -491,13 +372,18 @@ impl Threads {
             .min_by_key(|(_, rq)| *rq)
             .unwrap()
     }
+}
 
-    /// Checks if a thread can be scheduled on the current core.
-    #[allow(dead_code, reason = "used in scheduler implementation")]
-    #[cfg(feature = "core-affinity")]
-    fn is_affine_to_curr_core(&self, pid: ThreadId) -> bool {
-        self.get_property_unchecked(pid, |t| t.core_affinity)
-            .contains(crate::core_id())
+impl Deref for Threads {
+    type Target = threads::Threads;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for Threads {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }
 
@@ -636,7 +522,10 @@ pub fn core_id() -> CoreId {
 
 /// Checks if a given [`ThreadId`] is valid.
 pub fn is_valid_pid(thread_id: ThreadId) -> bool {
-    THREADS.with(|threads| threads.is_valid_pid(thread_id))
+    THREADS.with(|threads| {
+        threads.is_in_bound(thread_id)
+            && threads.tcbs().get_unchecked(thread_id).state != ThreadState::Invalid
+    })
 }
 
 /// Thread cleanup function.
@@ -665,14 +554,14 @@ pub fn yield_same() {
         };
         #[cfg(not(feature = "multicore"))]
         {
-            threads.runqueue.lock_mut().advance(prio)
+            threads.runqueue_mut().advance(prio)
         }
         #[cfg(feature = "multicore")]
         {
             // On multicore, the current thread is removed from the runqueue, and then
             // re-added **at the tail** in `sched` the next time the scheduler is triggered.
             // Simply triggering the scheduler therefore implicitly advances the runqueue.
-            !threads.runqueue.lock().is_empty(prio)
+            !threads.runqueue().is_empty(prio)
         }
     }) {
         schedule();
@@ -694,11 +583,10 @@ pub fn sleep() {
 /// Returns `false` if no paused thread exists for `thread_id`.
 pub fn wakeup(thread_id: ThreadId) -> bool {
     THREADS.with(|threads| {
-        let idx = usize::from(thread_id);
-        if idx >= THREADS_NUMOF {
+        if !threads.is_in_bound(thread_id) {
             return false;
         }
-        if threads.threads.lock()[idx].state != ThreadState::Paused {
+        if threads.tcbs().get_unchecked(thread_id).state != ThreadState::Paused {
             return false;
         }
         threads.set_state(thread_id, ThreadState::Running);
@@ -711,9 +599,15 @@ pub fn wakeup(thread_id: ThreadId) -> bool {
 /// Returns `None` if this is not a valid thread.
 pub fn get_priority(thread_id: ThreadId) -> Option<RunqueueId> {
     THREADS.with(|threads| {
-        threads
-            .is_valid_pid(thread_id)
-            .then(|| threads.get_priority(thread_id))
+        if !threads.is_in_bound(thread_id) {
+            return None;
+        }
+        let tcbs = threads.tcbs();
+        let thread = tcbs.get_unchecked(thread_id);
+        if thread.state == ThreadState::Invalid {
+            return None;
+        }
+        Some(thread.prio)
     })
 }
 

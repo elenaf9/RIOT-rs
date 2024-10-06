@@ -137,18 +137,20 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
                 }
             };
 
-            let mut tcbs = threads.threads.lock_mut();
-            if let Some(current_pid) = threads.current_pid() {
+            let current_pid = threads.current_pid();
+            let mut tcbs = threads.tcbs_mut();
+            if let Some(current_pid) = current_pid {
                 if next_pid == current_pid {
                     return true;
                 }
-                let current = &mut tcbs[usize::from(current_pid)];
-                copy_registers(trap_frame, &mut current.data);
+                copy_registers(trap_frame, &mut tcbs.get_unchecked_mut(current_pid).data);
             }
+            let &Thread { ref data, prio, .. } = tcbs.get_unchecked(next_pid);
+            copy_registers(data, trap_frame);
 
-            let next = &tcbs[usize::from(next_pid)];
-            threads.set_current_pid(next_pid, next.prio);
-            copy_registers(&next.data, trap_frame);
+            tcbs.release();
+            threads.set_current_pid(next_pid, prio);
+
             true
         }) {
             break;

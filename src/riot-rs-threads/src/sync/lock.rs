@@ -49,12 +49,12 @@ impl Lock {
     ///
     /// Panics if this is called outside of a thread context.
     pub fn acquire(&self) {
-        THREADS.with(|threads| {
+        THREADS.with(|mut threads| {
             let mut state = self.state.lock_mut();
             match *state {
                 LockState::Unlocked => *state = LockState::Locked(ThreadList::new()),
                 LockState::Locked(ref mut waiters) => {
-                    waiters.put_current(&threads, ThreadState::LockBlocked);
+                    waiters.put_current(&mut threads, ThreadState::LockBlocked);
                 }
             }
         })
@@ -82,12 +82,12 @@ impl Lock {
     /// If the lock was locked and there were no waiters, the lock will be unlocked.
     /// If the lock was not locked, the function just returns.
     pub fn release(&self) {
-        THREADS.with(|threads| {
+        THREADS.with(|mut threads| {
             let mut state = self.state.lock_mut();
             match *state {
                 LockState::Unlocked => {}
                 LockState::Locked(ref mut waiters) => {
-                    if waiters.pop(&threads).is_none() {
+                    if waiters.pop(&mut threads).is_none() {
                         *state = LockState::Unlocked
                     }
                 }

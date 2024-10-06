@@ -51,7 +51,7 @@ impl<T> Mutex<T> {
     ///
     /// Panics if called outside of a thread context.
     pub fn lock(&self) -> MutexGuard<T> {
-        THREADS.with(|threads| {
+        THREADS.with(|mut threads| {
             let mut state = self.state.lock_mut();
             match *state {
                 LockState::Unlocked => {
@@ -69,7 +69,7 @@ impl<T> Mutex<T> {
                     owner_prio,
                 } => {
                     if let Some(inherit_priority) =
-                        waiters.put_current(&threads, ThreadState::LockBlocked)
+                        waiters.put_current(&mut threads, ThreadState::LockBlocked)
                     {
                         if inherit_priority > owner_prio {
                             threads.set_priority(owner_id, inherit_priority);
@@ -111,7 +111,7 @@ impl<T> Mutex<T> {
     ///
     /// If there are waiters, the first waiter will be woken up.
     fn release(&self) {
-        THREADS.with(|threads| {
+        THREADS.with(|mut threads| {
             let mut state = self.state.lock_mut();
             match *state {
                 LockState::Unlocked => {}
@@ -121,9 +121,10 @@ impl<T> Mutex<T> {
                     ref mut owner_prio,
                 } => {
                     threads.set_priority(*owner_id, *owner_prio);
-                    if let Some((pid, _)) = waiters.pop(&threads) {
+                    if let Some((pid, _)) = waiters.pop(&mut threads) {
+                        let tcbs = threads.tcbs();
                         *owner_id = pid;
-                        *owner_prio = threads.get_priority(pid);
+                        *owner_prio = tcbs.get_unchecked(pid).prio;
                     } else {
                         *state = LockState::Unlocked
                     }

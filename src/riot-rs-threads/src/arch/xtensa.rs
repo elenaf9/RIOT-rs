@@ -4,7 +4,7 @@ use esp_hal::{
     trapframe::TrapFrame,
 };
 
-use crate::{cleanup, Arch, THREADS};
+use crate::{cleanup, Arch, Thread, THREADS};
 
 pub struct Cpu;
 
@@ -145,19 +145,22 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
                 return false;
             };
 
-            let mut tcbs = threads.threads.lock_mut();
-            if let Some(current_pid) = threads.current_pid() {
+            let current_pid = threads.current_pid();
+            let mut tcbs = threads.tcbs_mut();
+            if let Some(current_pid) = current_pid {
                 if next_pid == current_pid {
                     return true;
                 }
-
-                let current = &mut tcbs[usize::from(current_pid)];
-                current.data = *trap_frame;
+                tcbs.get_unchecked_mut(current_pid).data = *trap_frame;
             }
 
-            let next = &tcbs[usize::from(next_pid)];
-            threads.set_current_pid(next_pid, next.prio);
-            *trap_frame = next.data;
+            let &Thread { data, prio, .. } = tcbs.get_unchecked(next_pid);
+
+            tcbs.release();
+
+            threads.set_current_pid(next_pid, prio);
+            *trap_frame = data;
+
             true
         }) {
             break;
