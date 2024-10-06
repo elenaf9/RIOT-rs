@@ -1,6 +1,6 @@
 use crate::arch::{Arch as _, Cpu};
 
-use internal_cs::Spinlock;
+pub use internal_cs::Spinlock;
 
 use cortex_m::peripheral::SCB;
 use embassy_rp::{
@@ -122,8 +122,12 @@ mod internal_cs {
     impl<const N: usize> Spinlock<N> {
         pub unsafe fn acquire() {
             // Spin until we get the lock
-            while SIO.spinlock(N).read() == 0 {}
+            unsafe { while !Self::try_acquire() {} }
             // If we broke out of the loop we have just acquired the lock
+        }
+
+        pub unsafe fn try_acquire() -> bool {
+            SIO.spinlock(N).read() != 0
         }
 
         pub unsafe fn release() {
