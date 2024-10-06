@@ -45,15 +45,10 @@ panic-semihosting = { version = "0.6.0", features = ["exit"] }
 
 [target.'cfg(context = "rp2040")'.dependencies]
 static_cell = { workspace = true, optional = true }
-rp-pac = { workspace = true, optional = true }
-embassy-rp = { workspace = true, optional = true }
+rp-pac = { workspace = true }
+embassy-rp = { workspace = true }
 
 [features]
 defmt = ["dep:defmt", "riot-rs-runqueue/defmt"]
-multi-core = [
-  "dep:static_cell",
-  "dep:rp-pac",
-  "dep:embassy-rp",
-  "embassy-rp/fifo-handler",
-]
+multi-core = ["dep:static_cell", "embassy-rp/fifo-handler"]
 core-affinity = ["multi-core"]
