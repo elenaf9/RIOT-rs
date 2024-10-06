@@ -1,4 +1,4 @@
-use crate::{cleanup, Arch, Thread, THREADS};
+use crate::{cleanup, Arch, Thread, Threads, THREADS};
 use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
@@ -195,10 +195,14 @@ unsafe extern "C" fn PendSV() {
 unsafe fn sched() -> u128 {
     loop {
         if let Some(res) = THREADS.with(|threads| {
-            #[cfg(feature = "multi-core")]
-            threads.add_current_thread_to_rq();
+            let (mut guard, mut tcbs) = threads.with_tcbs_mut();
+            let (mut guard, mut runqueue) = guard.with_runqueue_mut();
+            let mut current_threads = guard.current_threads_mut();
 
-            let next_pid = match threads.get_next_pid() {
+            #[cfg(feature = "multi-core")]
+            Threads::add_current_thread_to_rq(&current_threads, &mut runqueue, &tcbs);
+
+            let next_pid = match Threads::get_next_pid(&mut runqueue, &tcbs) {
                 Some(pid) => pid,
                 None => {
                     #[cfg(feature = "multi-core")]
@@ -214,25 +218,26 @@ unsafe fn sched() -> u128 {
                 }
             };
 
-            let mut tcbs = threads.threads.lock_mut();
+            let current_pid = current_threads.current_pid();
             // `current_high_regs` will be null if there is no current thread.
             // This is only the case once, when the very first thread starts running.
             // The returned `r1` therefore will be null, and saving/ restoring
             // the context is skipped.
             let mut current_high_regs = core::ptr::null();
-            if let Some(current_pid) = threads.current_pid() {
+            if let Some(current_pid) = current_pid {
                 if next_pid == current_pid {
                     return Some(0);
                 }
-                let current = &mut tcbs[usize::from(current_pid)];
+                let current = tcbs.get_unchecked_mut(current_pid);
                 current.sp = cortex_m::register::psp::read() as usize;
                 current_high_regs = current.data.as_ptr();
             };
-            threads.set_current_pid(next_pid);
 
-            let next = &tcbs[usize::from(next_pid)];
+            let next = tcbs.get_unchecked(next_pid);
             let next_sp = next.sp;
             let next_high_regs = next.data.as_ptr();
+
+            current_threads.set_current_pid(next_pid);
 
             // The caller (`PendSV`) expects these three pointers in r0, r1 and r2:
             // r0 = &next.sp
