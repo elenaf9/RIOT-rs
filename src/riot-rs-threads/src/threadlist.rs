@@ -20,16 +20,18 @@ impl ThreadList {
     /// # Panics
     ///
     /// Panics if this is called outside of a thread context.
-    pub fn put_current(&mut self, threads: &Threads, state: ThreadState) -> Option<RunqueueId> {
-        let pid = threads
+    pub fn put_current(&mut self, threads: &mut Threads, state: ThreadState) -> Option<RunqueueId> {
+        let (mut guard, tcbs) = threads.with_tcbs();
+        let (mut guard, current_threads) = guard.with_current_threads();
+        let mut thread_blocklist = guard.thread_blocklist_mut();
+        let pid = current_threads
             .current_pid()
             .expect("Function should be called inside a thread context.");
-        let prio = threads.get_priority(pid);
+        let prio = tcbs.get_unchecked(pid).prio;
         let mut curr = None;
         let mut next = self.head;
-        let mut thread_blocklist = threads.thread_blocklist.lock_mut();
         while let Some(n) = next {
-            if threads.get_priority(n) < prio {
+            if tcbs.get_unchecked(n).prio < prio {
                 break;
             }
             curr = next;
@@ -46,6 +48,10 @@ impl ThreadList {
                 Some(prio)
             }
         };
+        thread_blocklist.release();
+        tcbs.release();
+        current_threads.release();
+
         threads.set_state(pid, state);
         inherit_priority
     }
@@ -56,9 +62,9 @@ impl ThreadList {
     /// the scheduler.
     ///
     /// Returns the thread's [`ThreadId`] and its previous [`ThreadState`].
-    pub fn pop(&mut self, threads: &Threads) -> Option<(ThreadId, ThreadState)> {
+    pub fn pop(&mut self, threads: &mut Threads) -> Option<(ThreadId, ThreadState)> {
         let head = self.head?;
-        self.head = threads.thread_blocklist.lock_mut()[usize::from(head)].take();
+        self.head = threads.thread_blocklist_mut()[usize::from(head)].take();
         let old_state = threads.set_state(head, ThreadState::Running);
         Some((head, old_state))
     }

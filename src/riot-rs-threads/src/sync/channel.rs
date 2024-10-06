@@ -36,19 +36,19 @@ impl<T: Copy + Send> Channel<T> {
     /// Panics if this is called outside of a thread context.
     pub fn send(&self, something: &T) {
         critical_section::with(|cs| {
-            THREADS.with_cs(cs, |threads| {
+            THREADS.with_cs(cs, |mut threads| {
                 let state = unsafe { &mut *self.state.get() };
                 match *state {
                     ChannelState::Idle => {
                         let mut waiters = ThreadList::new();
                         waiters.put_current(
-                            &threads,
+                            &mut threads,
                             ThreadState::ChannelTxBlocked(something as *const T as usize),
                         );
                         *state = ChannelState::SendersWaiting(waiters);
                     }
                     ChannelState::ReceiversWaiting(ref mut waiters) => {
-                        if let Some((_, head_state)) = waiters.pop(&threads) {
+                        if let Some((_, head_state)) = waiters.pop(&mut threads) {
                             if waiters.is_empty() {
                                 *state = ChannelState::Idle;
                             }
@@ -64,7 +64,7 @@ impl<T: Copy + Send> Channel<T> {
                     }
                     ChannelState::SendersWaiting(ref mut waiters) => {
                         waiters.put_current(
-                            &threads,
+                            &mut threads,
                             ThreadState::ChannelTxBlocked(self as *const _ as usize),
                         );
                     }
@@ -79,11 +79,11 @@ impl<T: Copy + Send> Channel<T> {
     /// the data, `false` otherwise.
     pub fn try_send(&self, something: &T) -> bool {
         critical_section::with(|cs| {
-            THREADS.with_cs(cs, |threads| {
+            THREADS.with_cs(cs, |mut threads| {
                 let state = unsafe { &mut *self.state.get() };
                 match *state {
                     ChannelState::ReceiversWaiting(ref mut waiters) => {
-                        if let Some((_, head_state)) = waiters.pop(&threads) {
+                        if let Some((_, head_state)) = waiters.pop(&mut threads) {
                             if waiters.is_empty() {
                                 *state = ChannelState::Idle;
                             }
@@ -116,21 +116,23 @@ impl<T: Copy + Send> Channel<T> {
         let mut res: MaybeUninit<T> = MaybeUninit::uninit();
 
         critical_section::with(|cs| {
-            THREADS.with_cs(cs, |threads| {
+            THREADS.with_cs(cs, |mut threads| {
                 let state = unsafe { &mut *self.state.get() };
                 let ptr = res.as_mut_ptr();
                 match *state {
                     ChannelState::Idle => {
                         let mut waiters = ThreadList::new();
-                        waiters.put_current(&threads, ThreadState::ChannelRxBlocked(ptr as usize));
+                        waiters
+                            .put_current(&mut threads, ThreadState::ChannelRxBlocked(ptr as usize));
                         *state = ChannelState::ReceiversWaiting(waiters);
                     }
                     ChannelState::ReceiversWaiting(ref mut waiters) => {
-                        waiters.put_current(&threads, ThreadState::ChannelRxBlocked(ptr as usize));
+                        waiters
+                            .put_current(&mut threads, ThreadState::ChannelRxBlocked(ptr as usize));
                         // sender will copy message
                     }
                     ChannelState::SendersWaiting(ref mut waiters) => {
-                        if let Some((_, head_state)) = waiters.pop(&threads) {
+                        if let Some((_, head_state)) = waiters.pop(&mut threads) {
                             if waiters.is_empty() {
                                 *state = ChannelState::Idle;
                             }
@@ -162,12 +164,12 @@ impl<T: Copy + Send> Channel<T> {
     pub fn try_recv(&self) -> Option<T> {
         let mut res: MaybeUninit<T> = MaybeUninit::uninit();
         let have_received = critical_section::with(|cs| {
-            THREADS.with_cs(cs, |threads| {
+            THREADS.with_cs(cs, |mut threads| {
                 let state = unsafe { &mut *self.state.get() };
                 match *state {
                     ChannelState::SendersWaiting(ref mut waiters) => {
                         let ptr = res.as_mut_ptr();
-                        if let Some((_, head_state)) = waiters.pop(&threads) {
+                        if let Some((_, head_state)) = waiters.pop(&mut threads) {
                             if waiters.is_empty() {
                                 *state = ChannelState::Idle;
                             }
