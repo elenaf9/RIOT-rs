@@ -20,31 +20,24 @@ impl ThreadList {
     /// # Panics
     ///
     /// Panics if this is called outside of a thread context.
-    pub fn put_current<'a>(
-        &mut self,
-        threads: &'a Threads,
-        state: ThreadState,
-    ) -> Option<RunqueueId> {
+    pub fn put_current(&mut self, threads: &Threads, state: ThreadState) -> Option<RunqueueId> {
         let (pid, prio) = threads
-            .current_with(|t| t.map(|t| (t.pid, t.prio)))
+            .current_pid_prio()
             .expect("Function should be called inside a thread context.");
         let mut curr = None;
         let mut next = self.head;
+        let mut thread_blocklist = threads.thread_blocklist.lock_mut();
         while let Some(n) = next {
-            if threads.get_unchecked_with(n, |t| t.prio < prio) {
+            if threads.get_priority(n) < prio {
                 break;
             }
             curr = next;
-            next = threads.thread_blocklist.with(|bl| bl[usize::from(n)]);
+            next = thread_blocklist[usize::from(n)];
         }
-        threads
-            .thread_blocklist
-            .with_mut(|bl| bl[usize::from(pid)] = next);
+        thread_blocklist[usize::from(pid)] = next;
         let inherit_priority = match curr {
             Some(curr) => {
-                threads
-                    .thread_blocklist
-                    .with_mut(|bl| bl[usize::from(curr)] = Some(pid));
+                thread_blocklist[usize::from(curr)] = Some(pid);
                 None
             }
             _ => {
@@ -62,11 +55,9 @@ impl ThreadList {
     /// the scheduler.
     ///
     /// Returns the thread's [`ThreadId`] and its previous [`ThreadState`].
-    pub fn pop<'a>(&mut self, threads: &'a Threads) -> Option<(ThreadId, ThreadState)> {
+    pub fn pop(&mut self, threads: &Threads) -> Option<(ThreadId, ThreadState)> {
         let head = self.head?;
-        self.head = threads
-            .thread_blocklist
-            .with_mut(|bl| bl[usize::from(head)].take());
+        self.head = threads.thread_blocklist.lock_mut()[usize::from(head)].take();
         let old_state = threads.set_state(head, ThreadState::Running);
         Some((head, old_state))
     }

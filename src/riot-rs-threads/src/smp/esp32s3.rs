@@ -1,4 +1,3 @@
-use critical_section::CriticalSection;
 use esp_hal::{
     cpu_control::{CpuControl, Stack},
     interrupt,
@@ -23,6 +22,8 @@ pub struct Chip;
 impl Multicore for Chip {
     const CORES: u32 = 2;
     const IDLE_THREAD_STACK_SIZE: usize = 2048;
+
+    type LockRestoreState = ();
 
     fn core_id() -> CoreId {
         esp_hal::get_core().into()
@@ -90,7 +91,9 @@ impl Multicore for Chip {
         critical_section::with(|_| f())
     }
 
-    fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection) -> R) -> R {
-        unsafe { f(CriticalSection::new()) }
+    fn multicore_lock_acquire<const N: usize>() -> Self::LockRestoreState {
+        ()
     }
+
+    fn multicore_lock_release<const N: usize>(_state: Self::LockRestoreState) {}
 }

@@ -77,12 +77,12 @@ pub fn wait_one(mask: ThreadFlags) -> ThreadFlags {
 /// Panics if this is called outside of a thread context.
 pub fn clear(mask: ThreadFlags) -> ThreadFlags {
     THREADS.with(|threads| {
-        threads.current_with(|t| {
-            let t = t.unwrap();
-            let res = t.flags & mask;
-            t.flags &= !mask;
-            res
-        })
+        let thread_id = threads.current_pid().unwrap();
+        let mut tcbs = threads.threads.lock_mut();
+        let flags = &mut tcbs[usize::from(thread_id)].flags;
+        let res = *flags & mask;
+        *flags &= !mask;
+        res
     })
 }
 
@@ -93,40 +93,45 @@ pub fn clear(mask: ThreadFlags) -> ThreadFlags {
 /// Panics if this is called outside of a thread context.
 pub fn get() -> ThreadFlags {
     // TODO: current() requires us to use mutable `threads` here
-    THREADS.with(|threads| threads.current_with(|t| t.unwrap().flags))
+    THREADS.with(|threads| {
+        let thread_id = threads.current_pid().unwrap();
+        threads.get_property_unchecked(thread_id, |t| t.flags)
+    })
 }
 
 impl Threads {
     // thread flags implementation
     fn flag_set(&self, thread_id: ThreadId, mask: ThreadFlags) {
-        if self.get_unchecked_mut_with(thread_id, |thread| {
-            thread.flags |= mask;
-            match thread.state {
-                ThreadState::FlagBlocked(WaitMode::Any(bits)) => thread.flags & bits != 0,
-                ThreadState::FlagBlocked(WaitMode::All(bits)) => thread.flags & bits == bits,
-                _ => false,
-            }
-        }) {
-            self.set_state(thread_id, ThreadState::Running);
-        }
+        let mut tcbs = self.threads.lock_mut();
+        let thread = self.get_unchecked_mut(&mut tcbs, thread_id);
+        thread.flags |= mask;
+        match thread.state {
+            ThreadState::FlagBlocked(WaitMode::Any(bits)) if thread.flags & bits != 0 => {}
+            ThreadState::FlagBlocked(WaitMode::All(bits)) if thread.flags & bits == bits => {}
+            _ => return,
+        };
+        tcbs.release();
+        self.set_state(thread_id, ThreadState::Running);
     }
 
     fn flag_wait<F>(&self, cond: F, mode: WaitMode) -> Option<ThreadFlags>
     where
         F: Fn(u16) -> Option<u16>,
     {
-        let (res, pid) = self.current_with(|thread| {
-            let thread = thread.unwrap();
-            let res = cond(thread.flags);
-            if let Some(res) = res {
-                thread.flags &= !res;
+        let thread_id = self.current_pid().unwrap();
+        let mut tcbs = self.threads.lock_mut();
+        let flags = &mut self.get_unchecked_mut(&mut tcbs, thread_id).flags;
+        match cond(*flags) {
+            Some(res) => {
+                *flags &= !res;
+                Some(res)
             }
-            (res, thread.pid)
-        });
-        if res.is_none() {
-            self.set_state(pid, ThreadState::FlagBlocked(mode));
+            None => {
+                tcbs.release();
+                self.set_state(thread_id, ThreadState::FlagBlocked(mode));
+                None
+            }
         }
-        res
     }
 
     fn flag_wait_all(&self, mask: ThreadFlags) -> Option<ThreadFlags> {

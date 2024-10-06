@@ -35,6 +35,8 @@ pub trait Multicore {
     /// Stack size for the idle threads.
     const IDLE_THREAD_STACK_SIZE: usize = 256;
 
+    type LockRestoreState;
+
     /// Returns the ID of the current core.
     fn core_id() -> CoreId;
 
@@ -48,11 +50,12 @@ pub trait Multicore {
     /// Disables preemption while the function is being executed.
     fn no_preemption_with<R>(f: impl FnOnce() -> R) -> R;
 
-    /// Implement a multicore lock for mutual exclusion on both cores.
+    /// Acquire a multicore lock for mutual exclusion on both cores.
     ///
     /// Must be called inside a section where preemption is already disabled, i.e. inside
     /// a [`Self::no_preemption_with`] closure.
-    fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R;
+    fn multicore_lock_acquire<const N: usize>() -> Self::LockRestoreState;
+    fn multicore_lock_release<const N: usize>(state: Self::LockRestoreState);
 }
 
 cfg_if::cfg_if! {
@@ -70,6 +73,8 @@ cfg_if::cfg_if! {
         impl Multicore for Chip {
             const CORES: u32 = 1;
 
+            type LockRestoreState = ();
+
             fn core_id() -> CoreId {
                 CoreId(0)
             }
@@ -84,9 +89,11 @@ cfg_if::cfg_if! {
                 critical_section::with(|_|f())
             }
 
-            fn multicore_lock_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
-                unsafe { f(CriticalSection::new()) }
+            fn multicore_lock_acquire<const N: usize>() -> Self::LockRestoreState {
+                ()
             }
+
+            fn multicore_lock_release<const N: usize>(_state: Self::LockRestoreState) { }
         }
     }
 }
@@ -96,8 +103,28 @@ cfg_if::cfg_if! {
 /// Mutual exclusion with `critical_section::with` is not guaranteed.
 /// The implementation may use `critical_section::with`, but can also be
 /// independent.
-pub fn critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
-    Chip::no_preemption_with(|| Chip::multicore_lock_with(f))
+pub fn global_critical_section_with<R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+    Chip::no_preemption_with(|| multicore_lock_with::<0, _>(f))
+}
+
+/// Executes a function inside a critical section.
+///
+/// Mutual exclusion with `critical_section::with` is not guaranteed.
+/// The implementation may use `critical_section::with`, but can also be
+/// independent.
+pub fn multicore_lock_with<const N: usize, R>(f: impl FnOnce(CriticalSection<'_>) -> R) -> R {
+    struct Guard<const N: usize> {
+        restore_state: <Chip as Multicore>::LockRestoreState,
+    }
+    impl<const N: usize> Drop for Guard<N> {
+        fn drop(&mut self) {
+            Chip::multicore_lock_release::<N>(self.restore_state);
+        }
+    }
+
+    let restore_state = Chip::multicore_lock_acquire::<N>();
+    let _guard = Guard::<N> { restore_state };
+    unsafe { f(CriticalSection::new()) }
 }
 
 /// Triggers the scheduler on core `id`.

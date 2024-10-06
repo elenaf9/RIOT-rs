@@ -1,16 +1,12 @@
 //! This module provides a Lock implementation.
-use core::cell::UnsafeCell;
-
-use crate::{threadlist::ThreadList, ThreadState, THREADS};
-
-use super::AtomicLock;
+use crate::{sync::ILock, threadlist::ThreadList, ThreadState, THREADS};
 
 /// A basic locking object.
 ///
 /// A `Lock` behaves like a Mutex, but carries no data.
 /// This is supposed to be used to implement other locking primitives.
 pub struct Lock {
-    state: crate::Lock<LockState>,
+    state: ILock<LockState>,
 }
 
 unsafe impl Sync for Lock {}
@@ -24,14 +20,14 @@ impl Lock {
     /// Creates new **unlocked** Lock.
     pub const fn new() -> Self {
         Self {
-            state: AtomicLock::new(LockState::Unlocked),
+            state: ILock::new(LockState::Unlocked),
         }
     }
 
     /// Creates new **locked** Lock.
     pub const fn new_locked() -> Self {
         Self {
-            state: crate::Lock::new(LockState::Locked(ThreadList::new())),
+            state: ILock::new(LockState::Locked(ThreadList::new())),
         }
     }
 
@@ -39,8 +35,8 @@ impl Lock {
     ///
     /// true if locked, false otherwise
     pub fn is_locked(&self) -> bool {
-        self.state
-            .with(|state| !matches!(state, LockState::Unlocked))
+        let state = self.state.lock();
+        !matches!(*state, LockState::Unlocked)
     }
 
     /// Get this lock (blocking).
@@ -54,12 +50,13 @@ impl Lock {
     /// Panics if this is called outside of a thread context.
     pub fn acquire(&self) {
         THREADS.with(|threads| {
-            self.state.with_mut(|state| match state {
+            let mut state = self.state.lock_mut();
+            match *state {
                 LockState::Unlocked => *state = LockState::Locked(ThreadList::new()),
-                LockState::Locked(waiters) => {
+                LockState::Locked(ref mut waiters) => {
                     waiters.put_current(&threads, ThreadState::LockBlocked);
                 }
-            })
+            }
         })
     }
 
@@ -68,13 +65,14 @@ impl Lock {
     /// If the lock was unlocked, it will be locked and the function returns true.
     /// If the lock was locked, the function returns false
     pub fn try_acquire(&self) -> bool {
-        self.state.with_mut(|state| match state {
+        let mut state = self.state.lock_mut();
+        match *state {
             LockState::Unlocked => {
                 *state = LockState::Locked(ThreadList::new());
                 true
             }
             LockState::Locked(_) => false,
-        })
+        }
     }
 
     /// Releases the lock.
@@ -85,14 +83,15 @@ impl Lock {
     /// If the lock was not locked, the function just returns.
     pub fn release(&self) {
         THREADS.with(|threads| {
-            self.state.with_mut(|state| match state {
+            let mut state = self.state.lock_mut();
+            match *state {
                 LockState::Unlocked => {}
-                LockState::Locked(waiters) => {
+                LockState::Locked(ref mut waiters) => {
                     if waiters.pop(&threads).is_none() {
                         *state = LockState::Unlocked
                     }
                 }
-            })
+            }
         })
     }
 }

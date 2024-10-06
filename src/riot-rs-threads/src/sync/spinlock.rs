@@ -1,9 +1,12 @@
 //! This module provides a Spinlock implementation.
-use core::cell::{RefCell, UnsafeCell};
+use core::{
+    cell::{RefCell, UnsafeCell},
+    ops::{Deref, DerefMut},
+};
 
 use critical_section::{CriticalSection, Mutex};
 
-use crate::smp::{Chip, Multicore};
+use crate::smp::multicore_lock_with;
 
 /// A basic spinlock.
 pub struct Spinlock<T> {
@@ -28,48 +31,22 @@ impl<T> Spinlock<T> {
         }
     }
 
-    pub fn with<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
-        while !Chip::multicore_lock_with(|cs| self.try_acquire(cs)) {}
-        let inner = unsafe { &*self.inner.get() };
-        let res = f(inner);
-        Chip::multicore_lock_with(|cs| self.release(cs));
-        res
+    pub fn lock(&self) -> SpinlockGuard<T> {
+        while !multicore_lock_with::<0, _>(|cs| self.try_acquire(cs)) {}
+        SpinlockGuard { lock: self }
     }
 
-    pub fn with_cs<F, R>(&self, cs: CriticalSection, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
-        while !self.try_acquire(cs) {}
-        let inner = unsafe { &*self.inner.get() };
-        let res = f(inner);
-        self.release(cs);
-        res
+    pub fn lock_mut(&self) -> SpinlockGuardMut<T> {
+        while !multicore_lock_with::<0, _>(|cs| self.try_acquire_mut(cs)) {}
+        SpinlockGuardMut { lock: self }
     }
 
-    pub fn with_mut<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut T) -> R,
-    {
-        while !Chip::multicore_lock_with(|cs| self.try_acquire_mut(cs)) {}
-        let inner = unsafe { &mut *self.inner.get() };
-        let res = f(inner);
-        Chip::multicore_lock_with(|cs| self.release(cs));
-        res
+    fn release(&self) {
+        multicore_lock_with::<0, _>(|cs| self.release_cs(cs));
     }
 
-    pub fn with_mut_cs<F, R>(&self, cs: CriticalSection, f: F) -> R
-    where
-        F: FnOnce(&mut T) -> R,
-    {
-        while !self.try_acquire_mut(cs) {}
-        let inner = unsafe { &mut *self.inner.get() };
-        let res = f(inner);
-        self.release(cs);
-        res
+    fn release_mut(&self) {
+        multicore_lock_with::<0, _>(|cs| self.release_cs(cs));
     }
 
     fn try_acquire(&self, cs: CriticalSection) -> bool {
@@ -97,7 +74,7 @@ impl<T> Spinlock<T> {
         }
     }
 
-    fn release(&self, cs: CriticalSection) {
+    fn release_cs(&self, cs: CriticalSection) {
         let mut state = self.state.borrow(cs).borrow_mut();
         match *state {
             LockState::Locked(1) | LockState::LockedMut => *state = LockState::Unlocked,
@@ -106,4 +83,62 @@ impl<T> Spinlock<T> {
         }
     }
 }
+
+/// Grants access to a [`Mutex`] inner data.
+///
+/// Dropping the [`MutexGuard`] will unlock the [`Mutex`];
+pub struct SpinlockGuard<'a, T> {
+    lock: &'a Spinlock<T>,
+}
+
+impl<'a, T> SpinlockGuard<'a, T> {
+    pub fn release(self) {
+        // dropping self will automatically release the lock.
+    }
+}
+
+impl<'a, T> Deref for SpinlockGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.lock.inner.get() }
+    }
+}
+
+impl<'a, T> Drop for SpinlockGuard<'a, T> {
+    fn drop(&mut self) {
+        self.lock.release();
+    }
+}
+
+pub struct SpinlockGuardMut<'a, T> {
+    lock: &'a Spinlock<T>,
+}
+
+impl<'a, T> SpinlockGuardMut<'a, T> {
+    pub fn release(self) {
+        // dropping self will automatically release the lock.
+    }
+}
+
+impl<'a, T> Deref for SpinlockGuardMut<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.lock.inner.get() }
+    }
+}
+
+impl<'a, T> DerefMut for SpinlockGuardMut<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.lock.inner.get() }
+    }
+}
+
+impl<'a, T> Drop for SpinlockGuardMut<'a, T> {
+    fn drop(&mut self) {
+        self.lock.release_mut();
+    }
+}
+
 unsafe impl<T> Sync for Spinlock<T> {}

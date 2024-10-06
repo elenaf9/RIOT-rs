@@ -145,15 +145,19 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
                 return false;
             };
 
+            let mut tcbs = threads.threads.lock_mut();
             if let Some(current_pid) = threads.current_pid() {
                 if next_pid == current_pid {
                     return true;
                 }
-                threads.get_unchecked_mut_with(current_pid, |t| t.data = *trap_frame);
-            }
-            threads.set_current_pid(next_pid);
-            threads.get_unchecked_with(next_pid, |t| *trap_frame = t.data);
 
+                let current = &mut tcbs[usize::from(current_pid)];
+                current.data = *trap_frame;
+            }
+
+            let next = &tcbs[usize::from(next_pid)];
+            threads.set_current_pid(next_pid, next.prio);
+            *trap_frame = next.data;
             true
         }) {
             break;
