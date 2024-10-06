@@ -77,9 +77,9 @@ pub fn wait_one(mask: ThreadFlags) -> ThreadFlags {
 /// Panics if this is called outside of a thread context.
 pub fn clear(mask: ThreadFlags) -> ThreadFlags {
     THREADS.with(|threads| {
-        let thread_id = threads.current_pid().unwrap();
-        let mut tcbs = threads.threads.lock_mut();
-        let flags = &mut tcbs[usize::from(thread_id)].flags;
+        let thread_id = threads.current_threads().current_pid().unwrap();
+        let mut tcbs = threads.tcbs_mut();
+        let flags = &mut tcbs.get_unchecked_mut(thread_id).flags;
         let res = *flags & mask;
         *flags &= !mask;
         res
@@ -94,16 +94,16 @@ pub fn clear(mask: ThreadFlags) -> ThreadFlags {
 pub fn get() -> ThreadFlags {
     // TODO: current() requires us to use mutable `threads` here
     THREADS.with(|threads| {
-        let thread_id = threads.current_pid().unwrap();
-        threads.get_property_unchecked(thread_id, |t| t.flags)
+        let thread_id = threads.current_threads().current_pid().unwrap();
+        threads.tcbs().get_unchecked(thread_id).flags
     })
 }
 
 impl Threads {
     // thread flags implementation
-    fn flag_set(&self, thread_id: ThreadId, mask: ThreadFlags) {
-        let mut tcbs = self.threads.lock_mut();
-        let thread = self.get_unchecked_mut(&mut tcbs, thread_id);
+    fn flag_set(&mut self, thread_id: ThreadId, mask: ThreadFlags) {
+        let mut tcbs = self.tcbs_mut();
+        let thread = tcbs.get_unchecked_mut(thread_id);
         thread.flags |= mask;
         match thread.state {
             ThreadState::FlagBlocked(WaitMode::Any(bits)) if thread.flags & bits != 0 => {}
@@ -114,13 +114,13 @@ impl Threads {
         self.set_state(thread_id, ThreadState::Running);
     }
 
-    fn flag_wait<F>(&self, cond: F, mode: WaitMode) -> Option<ThreadFlags>
+    fn flag_wait<F>(&mut self, cond: F, mode: WaitMode) -> Option<ThreadFlags>
     where
         F: Fn(u16) -> Option<u16>,
     {
-        let thread_id = self.current_pid().unwrap();
-        let mut tcbs = self.threads.lock_mut();
-        let flags = &mut self.get_unchecked_mut(&mut tcbs, thread_id).flags;
+        let thread_id = self.current_threads().current_pid().unwrap();
+        let mut tcbs = self.tcbs_mut();
+        let flags = &mut tcbs.get_unchecked_mut(thread_id).flags;
         match cond(*flags) {
             Some(res) => {
                 *flags &= !res;
@@ -134,7 +134,7 @@ impl Threads {
         }
     }
 
-    fn flag_wait_all(&self, mask: ThreadFlags) -> Option<ThreadFlags> {
+    fn flag_wait_all(&mut self, mask: ThreadFlags) -> Option<ThreadFlags> {
         self.flag_wait(
             |thread_flags| {
                 let res = thread_flags & mask;
@@ -144,7 +144,7 @@ impl Threads {
         )
     }
 
-    fn flag_wait_any(&self, mask: ThreadFlags) -> Option<ThreadFlags> {
+    fn flag_wait_any(&mut self, mask: ThreadFlags) -> Option<ThreadFlags> {
         self.flag_wait(
             |thread_flags| {
                 let res = thread_flags & mask;
@@ -154,7 +154,7 @@ impl Threads {
         )
     }
 
-    fn flag_wait_one(&self, mask: ThreadFlags) -> Option<ThreadFlags> {
+    fn flag_wait_one(&mut self, mask: ThreadFlags) -> Option<ThreadFlags> {
         self.flag_wait(
             |thread_flags| {
                 let res = thread_flags & mask;
