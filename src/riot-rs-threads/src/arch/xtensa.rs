@@ -4,7 +4,7 @@ use esp_hal::{
     trapframe::TrapFrame,
 };
 
-use crate::{cleanup, Arch, THREADS};
+use crate::{cleanup, Arch, Threads, THREADS};
 
 pub struct Cpu;
 
@@ -104,26 +104,27 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 unsafe fn sched(trap_frame: &mut TrapFrame) {
     loop {
         if THREADS.with(|threads| {
-            #[cfg(feature = "multi-core")]
-            threads.add_current_thread_to_rq();
+            let (mut guard, mut tcbs) = threads.with_tcbs_mut();
+            let (mut guard, mut runqueue) = guard.with_runqueue_mut();
+            let mut current_threads = guard.current_threads_mut();
 
-            let Some(next_pid) = threads.get_next_pid() else {
+            #[cfg(feature = "multi-core")]
+            Threads::add_current_thread_to_rq(&current_threads, &mut runqueue, &tcbs);
+
+            let Some(next_pid) = Threads::get_next_pid(&mut runqueue, &tcbs) else {
                 return false;
             };
 
-            let mut tcbs = threads.threads.lock_mut();
-            if let Some(current_pid) = threads.current_pid() {
+            let current_pid = current_threads.current_pid();
+            if let Some(current_pid) = current_pid {
                 if next_pid == current_pid {
                     return true;
                 }
-
-                let current = &mut tcbs[usize::from(current_pid)];
-                current.data = *trap_frame;
+                tcbs.get_unchecked_mut(current_pid).data = *trap_frame;
             }
-            threads.set_current_pid(next_pid);
+            *trap_frame = tcbs.get_unchecked(next_pid).data;
 
-            let next = &tcbs[usize::from(next_pid)];
-            *trap_frame = next.data;
+            current_threads.set_current_pid(next_pid);
             true
         }) {
             break;

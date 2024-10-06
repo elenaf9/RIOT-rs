@@ -1,4 +1,4 @@
-use crate::{cleanup, Arch, Thread, THREADS};
+use crate::{cleanup, Arch, Thread, Threads, THREADS};
 #[cfg(context = "esp32c6")]
 use esp_hal::peripherals::INTPRI as SYSTEM;
 #[cfg(context = "esp32c3")]
@@ -129,7 +129,11 @@ extern "C" fn FROM_CPU_INTR0(trap_frame: &mut TrapFrame) {
 unsafe fn sched(trap_frame: &mut TrapFrame) {
     loop {
         if THREADS.with(|threads| {
-            let next_pid = match threads.get_next_pid() {
+            let (mut guard, mut tcbs) = threads.with_tcbs_mut();
+            let (mut guard, mut runqueue) = guard.with_runqueue_mut();
+            let mut current_threads = guard.current_threads_mut();
+
+            let next_pid = match Threads::get_next_pid(&mut runqueue, &tcbs) {
                 Some(pid) => pid,
                 None => {
                     Cpu::wfi();
@@ -137,18 +141,16 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
                 }
             };
 
-            let mut tcbs = threads.threads.lock_mut();
-            if let Some(current_pid) = threads.current_pid() {
+            let current_pid = current_threads.current_pid();
+            if let Some(current_pid) = current_pid {
                 if next_pid == current_pid {
                     return true;
                 }
-                let current = &mut tcbs[usize::from(current_pid)];
-                copy_registers(trap_frame, &mut current.data);
+                copy_registers(trap_frame, &mut tcbs.get_unchecked_mut(current_pid).data);
             }
-            threads.set_current_pid(next_pid);
+            copy_registers(&tcbs.get_unchecked(next_pid).data, trap_frame);
 
-            let next = &tcbs[usize::from(next_pid)];
-            copy_registers(&next.data, trap_frame);
+            current_threads.set_current_pid(next_pid);
             true
         }) {
             break;
