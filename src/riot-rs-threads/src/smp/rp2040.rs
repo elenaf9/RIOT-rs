@@ -1,6 +1,6 @@
 use crate::arch::{Arch as _, Cpu};
 
-use internal_cs::Spinlock;
+pub use internal_cs::Spinlock;
 
 use cortex_m::peripheral::SCB;
 use embassy_rp::{
@@ -117,8 +117,12 @@ mod internal_cs {
             // Ensure the compiler doesn't re-order accesses and violate safety here
             compiler_fence(Ordering::Acquire);
             // Spin until we get the lock.
-            while SIO.spinlock(N).read() == 0 {}
+            while !Self::try_acquire() {}
             // If we broke out of the loop we have just acquired the lock
+        }
+
+        pub fn try_acquire() -> bool {
+            SIO.spinlock(N).read() != 0
         }
 
         pub fn release() {

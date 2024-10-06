@@ -59,6 +59,7 @@ pub use smp::CoreAffinity;
 use arch::{schedule, Arch, Cpu, ThreadData};
 use riot_rs_runqueue::RunQueue;
 use scheduler_lock::SchedulerLock;
+use sync::Spinlock;
 use thread::{Thread, ThreadState};
 
 #[cfg(feature = "multi-core")]
@@ -96,30 +97,30 @@ pub static THREAD_FNS: [ThreadFn] = [..];
 /// Struct holding all scheduler state
 struct Threads {
     /// Global thread runqueue.
-    runqueue: sync::ILock<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>>,
+    runqueue: Spinlock<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>, 1>,
     /// The actual TCBs.
-    threads: sync::ILock<[Thread; THREADS_NUMOF]>,
+    threads: Spinlock<[Thread; THREADS_NUMOF], 2>,
     /// `Some` when a thread is blocking another thread due to conflicting
     /// resource access.
-    thread_blocklist: sync::ILock<[Option<ThreadId>; THREADS_NUMOF]>,
+    thread_blocklist: Spinlock<[Option<ThreadId>; THREADS_NUMOF], 3>,
 
     /// The currently running thread(s).
     #[cfg(feature = "multi-core")]
-    current_threads: sync::ILock<[Option<ThreadId>; CORES_NUMOF]>,
+    current_threads: Spinlock<[Option<ThreadId>; CORES_NUMOF], 4>,
     #[cfg(not(feature = "multi-core"))]
-    current_thread: sync::ILock<Option<ThreadId>>,
+    current_thread: Spinlock<Option<ThreadId>, 4>,
 }
 
 impl Threads {
     const fn new() -> Self {
         Self {
-            runqueue: sync::ILock::new(RunQueue::new()),
-            threads: sync::ILock::new([const { Thread::default() }; THREADS_NUMOF]),
-            thread_blocklist: sync::ILock::new([const { None }; THREADS_NUMOF]),
+            runqueue: Spinlock::new_internal(RunQueue::new()),
+            threads: Spinlock::new_internal([const { Thread::default() }; THREADS_NUMOF]),
+            thread_blocklist: Spinlock::new_internal([const { None }; THREADS_NUMOF]),
             #[cfg(feature = "multi-core")]
-            current_threads: sync::ILock::new([None; CORES_NUMOF]),
+            current_threads: Spinlock::new_internal([None; CORES_NUMOF]),
             #[cfg(not(feature = "multi-core"))]
-            current_thread: sync::ILock::new(None),
+            current_thread: Spinlock::new_internal(None),
         }
     }
 
@@ -219,7 +220,7 @@ impl Threads {
     #[allow(dead_code, reason = "used in scheduler implementation")]
     fn get_unchecked<'a, 'b: 'a>(
         &self,
-        tcb: &'b sync::ILockGuard<[Thread; THREADS_NUMOF]>,
+        tcb: &'b sync::SpinlockGuard<[Thread; THREADS_NUMOF], 2>,
         thread_id: ThreadId,
     ) -> &'a Thread {
         &tcb[usize::from(thread_id)]
@@ -236,7 +237,7 @@ impl Threads {
     /// data in the returned [`Thread`] is undefined, i.e. empty or outdated.
     fn get_unchecked_mut<'a, 'b: 'a>(
         &self,
-        tcb: &'b mut sync::ILockGuard<[Thread; THREADS_NUMOF]>,
+        tcb: &'b mut sync::SpinlockGuard<[Thread; THREADS_NUMOF], 2>,
         thread_id: ThreadId,
     ) -> &'a mut Thread {
         &mut tcb[usize::from(thread_id)]
