@@ -9,12 +9,12 @@ use core::{
 use portable_atomic::AtomicUsize;
 
 /// A basic spinlock.
-pub struct AtomicLock<T> {
+pub struct AtomicLock<T, const N: usize> {
     state: AtomicUsize,
     inner: UnsafeCell<T>,
 }
 
-impl<T> AtomicLock<T> {
+impl<T, const N: usize> AtomicLock<T, N> {
     /// Creates new Spinlock.
     pub const fn new(inner: T) -> Self {
         Self {
@@ -23,7 +23,7 @@ impl<T> AtomicLock<T> {
         }
     }
 
-    pub fn lock(&self) -> AtomicLockGuard<T> {
+    pub fn lock(&self) -> AtomicLockGuard<T, N> {
         while self
             .state
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |val| {
@@ -34,7 +34,7 @@ impl<T> AtomicLock<T> {
         AtomicLockGuard { lock: self }
     }
 
-    pub fn lock_mut(&self) -> AtomicLockGuardMut<T> {
+    pub fn lock_mut(&self) -> AtomicLockGuardMut<T, N> {
         while self
             .state
             .compare_exchange(0, usize::MAX, Ordering::AcqRel, Ordering::Acquire)
@@ -55,17 +55,17 @@ impl<T> AtomicLock<T> {
 /// Grants access to a [`Mutex`] inner data.
 ///
 /// Dropping the [`MutexGuard`] will unlock the [`Mutex`];
-pub struct AtomicLockGuard<'a, T> {
-    lock: &'a AtomicLock<T>,
+pub struct AtomicLockGuard<'a, T, const N: usize> {
+    lock: &'a AtomicLock<T, N>,
 }
 
-impl<'a, T> AtomicLockGuard<'a, T> {
+impl<'a, T, const N: usize> AtomicLockGuard<'a, T, N> {
     pub fn release(self) {
         // dropping self will automatically release the lock.
     }
 }
 
-impl<'a, T> Deref for AtomicLockGuard<'a, T> {
+impl<'a, T, const N: usize> Deref for AtomicLockGuard<'a, T, N> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -73,23 +73,23 @@ impl<'a, T> Deref for AtomicLockGuard<'a, T> {
     }
 }
 
-impl<'a, T> Drop for AtomicLockGuard<'a, T> {
+impl<'a, T, const N: usize> Drop for AtomicLockGuard<'a, T, N> {
     fn drop(&mut self) {
         self.lock.release();
     }
 }
 
-pub struct AtomicLockGuardMut<'a, T> {
-    lock: &'a AtomicLock<T>,
+pub struct AtomicLockGuardMut<'a, T, const N: usize> {
+    lock: &'a AtomicLock<T, N>,
 }
 
-impl<'a, T> AtomicLockGuardMut<'a, T> {
+impl<'a, T, const N: usize> AtomicLockGuardMut<'a, T, N> {
     pub fn release(self) {
         // dropping self will automatically release the lock.
     }
 }
 
-impl<'a, T> Deref for AtomicLockGuardMut<'a, T> {
+impl<'a, T, const N: usize> Deref for AtomicLockGuardMut<'a, T, N> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -97,16 +97,16 @@ impl<'a, T> Deref for AtomicLockGuardMut<'a, T> {
     }
 }
 
-impl<'a, T> DerefMut for AtomicLockGuardMut<'a, T> {
+impl<'a, T, const N: usize> DerefMut for AtomicLockGuardMut<'a, T, N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.lock.inner.get() }
     }
 }
 
-impl<'a, T> Drop for AtomicLockGuardMut<'a, T> {
+impl<'a, T, const N: usize> Drop for AtomicLockGuardMut<'a, T, N> {
     fn drop(&mut self) {
         self.lock.release_mut();
     }
 }
 
-unsafe impl<T> Sync for AtomicLock<T> {}
+unsafe impl<T, const N: usize> Sync for AtomicLock<T, N> {}

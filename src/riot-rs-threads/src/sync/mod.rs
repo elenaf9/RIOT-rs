@@ -13,6 +13,6 @@ pub use lock::Lock;
 pub use mutex::{Mutex, MutexGuard};
 pub use spinlock::{Spinlock, SpinlockGuard, SpinlockGuardMut};
 
-pub type ILock<T> = AtomicLock<T>;
-pub type ILockGuard<'a, T> = AtomicLockGuard<'a, T>;
-pub type ILockGuardMut<'a, T> = AtomicLockGuardMut<'a, T>;
+pub type ILock<T, const N: usize = 0> = AtomicLock<T, N>;
+pub type ILockGuard<'a, T, const N: usize> = AtomicLockGuard<'a, T, N>;
+pub type ILockGuardMut<'a, T, const N: usize> = AtomicLockGuardMut<'a, T, N>;
