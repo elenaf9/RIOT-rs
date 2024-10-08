@@ -1,12 +1,12 @@
 //! This module provides a Lock implementation.
-use crate::{sync::ILock, threadlist::ThreadList, ThreadState, THREADS};
+use crate::{sync::Spinlock, threadlist::ThreadList, ThreadState, THREADS};
 
 /// A basic locking object.
 ///
 /// A `Lock` behaves like a Mutex, but carries no data.
 /// This is supposed to be used to implement other locking primitives.
 pub struct Lock {
-    state: ILock<LockState>,
+    state: Spinlock<LockState>,
 }
 
 unsafe impl Sync for Lock {}
@@ -20,14 +20,14 @@ impl Lock {
     /// Creates new **unlocked** Lock.
     pub const fn new() -> Self {
         Self {
-            state: ILock::new(LockState::Unlocked),
+            state: Spinlock::new(LockState::Unlocked),
         }
     }
 
     /// Creates new **locked** Lock.
     pub const fn new_locked() -> Self {
         Self {
-            state: ILock::new(LockState::Locked(ThreadList::new())),
+            state: Spinlock::new(LockState::Locked(ThreadList::new())),
         }
     }
 

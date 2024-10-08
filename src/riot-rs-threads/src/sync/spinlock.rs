@@ -1,103 +1,139 @@
-//! This module provides a Spinlock implementation.
+//! This module provides a GenericSpinlock implementation.
 use core::{
-    cell::{RefCell, UnsafeCell},
+    cell::UnsafeCell,
     ops::{Deref, DerefMut},
 };
 
-use critical_section::{CriticalSection, Mutex};
+pub use backend_atomic::{Atomic, AtomicRw};
+pub use backend_cs::Cs;
 
-use crate::smp::multicore_lock_with;
+#[cfg(all(feature = "multicore", context = "rp2040"))]
+pub use backend_hardware::Hardware;
 
-/// A basic spinlock.
-pub struct Spinlock<T, const N: usize> {
-    state: Mutex<RefCell<LockState>>,
+/// Trait for the spinlock backend that implements the
+/// acquisition and release of the lock.
+pub trait SpinlockBackend<const N: usize> {
+    /// Try acquire immutable access to the spinlock.
+    fn try_acquire(&self) -> bool;
+
+    /// Try acquire mutable access to the spinlock.
+    fn try_acquire_mut(&self) -> bool {
+        // Don't differentiate between mutable and immutable access.
+        self.try_acquire()
+    }
+
+    /// Release immutable access to spinlock.
+    fn release(&self);
+
+    /// Release mutable access to spinlock.
+    fn release_mut(&self) {
+        // Don't differentiate between mutable and immutable access.
+        self.release()
+    }
+}
+
+type Backend<const N: usize> = Atomic;
+
+/// Spinlock with default backend, used for all internal spinlocks.
+pub type Spinlock<T, const N: usize = 0> = GenericSpinlock<T, Backend<N>, N>;
+/// Guard for [`Spinlock`].
+pub type SpinlockGuard<'a, T, const N: usize> = GenericSpinlockGuard<'a, T, Backend<N>, N>;
+/// Guard with mutable access for [`Spinlock`].
+pub type SpinlockGuardMut<'a, T, const N: usize> = GenericSpinlockGuardMut<'a, T, Backend<N>, N>;
+
+/// A generic spinlock that supports multiple backends
+/// for acquiring and releasing the lock.
+pub struct GenericSpinlock<T, B, const N: usize> {
+    backend: B,
     inner: UnsafeCell<T>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum LockState {
-    Unlocked,
-    Locked(usize),
-    LockedMut,
-}
-
-impl<T, const N: usize> Spinlock<T, N> {
-    /// Creates new Spinlock.
-    pub const fn new(inner: T) -> Self {
-        Self {
-            state: Mutex::new(RefCell::new(LockState::Unlocked)),
-            inner: UnsafeCell::new(inner),
-        }
+impl<T, B, const N: usize> GenericSpinlock<T, B, N>
+where
+    B: SpinlockBackend<N>,
+{
+    /// Acquire the spinlock to get immutable access to the inner data.
+    pub fn lock(&self) -> GenericSpinlockGuard<T, B, N> {
+        while !self.backend.try_acquire() {}
+        GenericSpinlockGuard { lock: self }
     }
 
-    pub fn lock(&self) -> SpinlockGuard<T, N> {
-        while !multicore_lock_with::<0, _>(|cs| self.try_acquire(cs)) {}
-        SpinlockGuard { lock: self }
-    }
-
-    pub fn lock_mut(&self) -> SpinlockGuardMut<T, N> {
-        while !multicore_lock_with::<0, _>(|cs| self.try_acquire_mut(cs)) {}
-        SpinlockGuardMut { lock: self }
+    /// Acquire the spinlock to get mutable access to the inner data.
+    pub fn lock_mut(&self) -> GenericSpinlockGuardMut<T, B, N> {
+        while !self.backend.try_acquire_mut() {}
+        GenericSpinlockGuardMut { lock: self }
     }
 
     fn release(&self) {
-        multicore_lock_with::<0, _>(|cs| self.release_cs(cs));
+        self.backend.release();
     }
 
     fn release_mut(&self) {
-        multicore_lock_with::<0, _>(|cs| self.release_cs(cs));
+        self.backend.release_mut();
     }
+}
 
-    fn try_acquire(&self, cs: CriticalSection) -> bool {
-        let mut state = self.state.borrow(cs).borrow_mut();
-        match *state {
-            LockState::Unlocked => {
-                *state = LockState::Locked(1);
-                true
-            }
-            LockState::Locked(ref mut count) => {
-                *count += 1;
-                true
-            }
-            _ => false,
-        }
-    }
-
-    fn try_acquire_mut(&self, cs: CriticalSection) -> bool {
-        let mut state = self.state.borrow(cs).borrow_mut();
-        if *state == LockState::Unlocked {
-            *state = LockState::LockedMut;
-            true
-        } else {
-            false
-        }
-    }
-
-    fn release_cs(&self, cs: CriticalSection) {
-        let mut state = self.state.borrow(cs).borrow_mut();
-        match *state {
-            LockState::Locked(1) | LockState::LockedMut => *state = LockState::Unlocked,
-            LockState::Locked(ref mut count) => *count -= 1,
-            LockState::Unlocked => {}
+impl<T, const N: usize> GenericSpinlock<T, Atomic, N> {
+    pub const fn new(inner: T) -> Self {
+        Self {
+            inner: UnsafeCell::new(inner),
+            backend: Atomic::new(),
         }
     }
 }
 
-/// Grants access to a [`Mutex`] inner data.
+impl<T, const N: usize> GenericSpinlock<T, AtomicRw, N> {
+    pub const fn new(inner: T) -> Self {
+        Self {
+            inner: UnsafeCell::new(inner),
+            backend: AtomicRw::new(),
+        }
+    }
+}
+
+impl<T, const N: usize> GenericSpinlock<T, Cs, N> {
+    pub const fn new(inner: T) -> Self {
+        Self {
+            inner: UnsafeCell::new(inner),
+            backend: Cs::new(),
+        }
+    }
+}
+
+#[cfg(all(feature = "multicore", context = "rp2040"))]
+impl<T, const N: usize> GenericSpinlock<T, Hardware<N>, N> {
+    pub const fn new(inner: T) -> Self {
+        Self {
+            inner: UnsafeCell::new(inner),
+            backend: Hardware::new(),
+        }
+    }
+}
+
+/// Grants access to a [`GenericSpinlock`] inner data.
 ///
-/// Dropping the [`MutexGuard`] will unlock the [`Mutex`];
-pub struct SpinlockGuard<'a, T, const N: usize> {
-    lock: &'a Spinlock<T, N>,
+/// Dropping the [`GenericSpinlockGuard`] will unlock the [`GenericSpinlock`];
+pub struct GenericSpinlockGuard<'a, T, B, const N: usize>
+where
+    B: SpinlockBackend<N>,
+{
+    lock: &'a GenericSpinlock<T, B, N>,
 }
 
-impl<'a, T, const N: usize> SpinlockGuard<'a, T, N> {
+impl<'a, T, B, const N: usize> GenericSpinlockGuard<'a, T, B, N>
+where
+    B: SpinlockBackend<N>,
+{
+    /// Release the lock.
     pub fn release(self) {
         // dropping self will automatically release the lock.
     }
 }
 
-impl<'a, T, const N: usize> Deref for SpinlockGuard<'a, T, N> {
+impl<'a, T, B, const N: usize> Deref for GenericSpinlockGuard<'a, T, B, N>
+where
+    B: SpinlockBackend<N>,
+{
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -105,23 +141,36 @@ impl<'a, T, const N: usize> Deref for SpinlockGuard<'a, T, N> {
     }
 }
 
-impl<'a, T, const N: usize> Drop for SpinlockGuard<'a, T, N> {
+impl<'a, T, B, const N: usize> Drop for GenericSpinlockGuard<'a, T, B, N>
+where
+    B: SpinlockBackend<N>,
+{
     fn drop(&mut self) {
         self.lock.release();
     }
 }
 
-pub struct SpinlockGuardMut<'a, T, const N: usize> {
-    lock: &'a Spinlock<T, N>,
+pub struct GenericSpinlockGuardMut<'a, T, B, const N: usize>
+where
+    B: SpinlockBackend<N>,
+{
+    lock: &'a GenericSpinlock<T, B, N>,
 }
 
-impl<'a, T, const N: usize> SpinlockGuardMut<'a, T, N> {
+impl<'a, B, T, const N: usize> GenericSpinlockGuardMut<'a, T, B, N>
+where
+    B: SpinlockBackend<N>,
+{
+    /// Release the lock.
     pub fn release(self) {
         // dropping self will automatically release the lock.
     }
 }
 
-impl<'a, T, const N: usize> Deref for SpinlockGuardMut<'a, T, N> {
+impl<'a, T, B, const N: usize> Deref for GenericSpinlockGuardMut<'a, T, B, N>
+where
+    B: SpinlockBackend<N>,
+{
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -129,16 +178,199 @@ impl<'a, T, const N: usize> Deref for SpinlockGuardMut<'a, T, N> {
     }
 }
 
-impl<'a, T, const N: usize> DerefMut for SpinlockGuardMut<'a, T, N> {
+impl<'a, T, B, const N: usize> DerefMut for GenericSpinlockGuardMut<'a, T, B, N>
+where
+    B: SpinlockBackend<N>,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.lock.inner.get() }
     }
 }
 
-impl<'a, T, const N: usize> Drop for SpinlockGuardMut<'a, T, N> {
+impl<'a, T, B, const N: usize> Drop for GenericSpinlockGuardMut<'a, T, B, N>
+where
+    B: SpinlockBackend<N>,
+{
     fn drop(&mut self) {
         self.lock.release_mut();
     }
 }
 
-unsafe impl<T, const N: usize> Sync for Spinlock<T, N> {}
+unsafe impl<T, B, const N: usize> Sync for GenericSpinlock<T, B, N> {}
+
+/// Backend that uses atomics to represent the spinlock state.
+mod backend_atomic {
+    use core::sync::atomic::Ordering;
+
+    use portable_atomic::{AtomicBool, AtomicUsize};
+
+    use super::SpinlockBackend;
+
+    /// Spinlock that is using atomics to represent the spinlock state.
+    pub struct Atomic {
+        state: AtomicBool,
+    }
+
+    impl Atomic {
+        pub const fn new() -> Self {
+            Self {
+                state: AtomicBool::new(true),
+            }
+        }
+    }
+
+    impl<const N: usize> SpinlockBackend<N> for Atomic {
+        fn try_acquire(&self) -> bool {
+            self.state.swap(false, Ordering::AcqRel)
+        }
+
+        fn release(&self) {
+            self.state.store(true, Ordering::Release);
+        }
+    }
+
+    /// Variant of [`Atomic`](super::Atomic) that differentiates
+    /// between read and write accesses.
+    pub struct AtomicRw {
+        state: AtomicUsize,
+    }
+
+    impl AtomicRw {
+        pub const fn new() -> Self {
+            Self {
+                state: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl<const N: usize> SpinlockBackend<N> for AtomicRw {
+        fn try_acquire(&self) -> bool {
+            self.state
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |val| {
+                    (val < usize::MAX).then_some(val + 1)
+                })
+                .is_ok()
+        }
+
+        fn try_acquire_mut(&self) -> bool {
+            self.state
+                .compare_exchange(0, usize::MAX, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        }
+
+        fn release(&self) {
+            self.state.sub(1, Ordering::AcqRel);
+        }
+
+        fn release_mut(&self) {
+            self.state.store(0, Ordering::Release);
+        }
+    }
+}
+
+/// Backend that uses a critical-section protected state enum.
+mod backend_cs {
+    use core::cell::RefCell;
+
+    use critical_section::Mutex;
+
+    use crate::smp::multicore_lock_with;
+
+    use super::SpinlockBackend;
+
+    /// Spinlock backend with a critical-section protected state enum.
+    ///
+    /// It differentiates between read and write accesses.
+    pub struct Cs {
+        state: Mutex<RefCell<LockState>>,
+    }
+
+    impl Cs {
+        pub const fn new() -> Self {
+            Self {
+                state: Mutex::new(RefCell::new(LockState::Unlocked)),
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    enum LockState {
+        Unlocked,
+        Locked(usize),
+        LockedMut,
+    }
+
+    impl<const N: usize> SpinlockBackend<N> for Cs {
+        fn try_acquire(&self) -> bool {
+            multicore_lock_with::<0, _>(|cs| {
+                let mut state = self.state.borrow(cs).borrow_mut();
+                match *state {
+                    LockState::Unlocked => {
+                        *state = LockState::Locked(1);
+                        true
+                    }
+                    LockState::Locked(ref mut count) => {
+                        *count += 1;
+                        true
+                    }
+                    _ => false,
+                }
+            })
+        }
+
+        fn try_acquire_mut(&self) -> bool {
+            multicore_lock_with::<0, _>(|cs| {
+                let mut state = self.state.borrow(cs).borrow_mut();
+                if *state == LockState::Unlocked {
+                    *state = LockState::LockedMut;
+                    true
+                } else {
+                    false
+                }
+            })
+        }
+
+        fn release(&self) {
+            multicore_lock_with::<0, _>(|cs| {
+                let mut state = self.state.borrow(cs).borrow_mut();
+                match *state {
+                    LockState::Locked(1) | LockState::LockedMut => *state = LockState::Unlocked,
+                    LockState::Locked(ref mut count) => *count -= 1,
+                    LockState::Unlocked => {}
+                }
+            });
+        }
+
+        fn release_mut(&self) {
+            <Self as SpinlockBackend<N>>::release(self)
+        }
+    }
+}
+
+/// Backend based on hardware spinlocks.
+#[cfg(all(feature = "multicore", context = "rp2040"))]
+mod backend_hardware {
+    use crate::smp::Spinlock;
+
+    use super::SpinlockBackend;
+
+    /// Spinlock backend based on hardware spinlocks.
+    pub type Hardware<const N: usize> = Spinlock<N>;
+
+    impl<const N: usize> Hardware<N> {
+        pub const fn new() -> Self {
+            Self {}
+        }
+    }
+
+    impl<const N: usize> SpinlockBackend<N> for Hardware<N> {
+        fn try_acquire(&self) -> bool {
+            unsafe { Self::try_acquire() }
+        }
+
+        fn release(&self) {
+            unsafe { Self::release() }
+        }
+    }
+}

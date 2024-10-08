@@ -2,7 +2,7 @@
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
-use crate::{sync::ILock, threadlist::ThreadList, ThreadState, THREADS};
+use crate::{sync::Spinlock, threadlist::ThreadList, ThreadState, THREADS};
 
 enum ChannelState {
     Idle,
@@ -12,7 +12,7 @@ enum ChannelState {
 
 /// Blocking channel for sending data between threads.
 pub struct Channel<T> {
-    state: ILock<ChannelState>,
+    state: Spinlock<ChannelState>,
     phantom: core::marker::PhantomData<T>,
 }
 
@@ -21,7 +21,7 @@ unsafe impl<T> Sync for Channel<T> {}
 impl<T: Copy + Send> Channel<T> {
     pub const fn new() -> Self {
         Channel {
-            state: ILock::new(ChannelState::Idle),
+            state: Spinlock::new(ChannelState::Idle),
             phantom: PhantomData,
         }
     }

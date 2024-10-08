@@ -13,68 +13,72 @@ use riot_rs_runqueue::{RunQueue, RunqueueId, ThreadId};
 #[cfg(feature = "multicore")]
 use crate::{core_id, CORES_NUMOF};
 use crate::{
-    sync::{ILock, ILockGuard, ILockGuardMut},
+    sync::{Spinlock, SpinlockGuard, SpinlockGuardMut},
     thread::Thread,
     SCHED_PRIO_LEVELS, THREADS_NUMOF,
 };
 
 pub struct Threads {
     /// Global thread runqueue.
-    runqueue: ILock<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>, 1>,
+    runqueue: Spinlock<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>, 1>,
     /// The actual TCBs.
-    tcbs: ILock<TCBs, 2>,
+    tcbs: Spinlock<TCBs, 2>,
     /// `Some` when a thread is blocking another thread due to conflicting
     /// resource access.
-    thread_blocklist: ILock<[Option<ThreadId>; THREADS_NUMOF], 3>,
+    thread_blocklist: Spinlock<[Option<ThreadId>; THREADS_NUMOF], 3>,
 
     /// The currently running thread(s).
     #[cfg(feature = "multicore")]
-    current_threads: ILock<[Option<(ThreadId, RunqueueId)>; CORES_NUMOF], 4>,
+    current_threads: Spinlock<[Option<(ThreadId, RunqueueId)>; CORES_NUMOF], 4>,
     #[cfg(not(feature = "multicore"))]
-    current_thread: ILock<Option<(ThreadId, RunqueueId)>, 4>,
+    current_thread: Spinlock<Option<(ThreadId, RunqueueId)>, 4>,
 }
 
 impl Threads {
     pub const fn new() -> Self {
         Self {
-            runqueue: ILock::new(RunQueue::new()),
-            tcbs: ILock::new(TCBs::new()),
-            thread_blocklist: ILock::new([const { None }; THREADS_NUMOF]),
+            runqueue: Spinlock::new(RunQueue::new()),
+            tcbs: Spinlock::new(TCBs::new()),
+            thread_blocklist: Spinlock::new([const { None }; THREADS_NUMOF]),
             #[cfg(feature = "multicore")]
-            current_threads: ILock::new([None; CORES_NUMOF]),
+            current_threads: Spinlock::new([None; CORES_NUMOF]),
             #[cfg(not(feature = "multicore"))]
-            current_thread: ILock::new(None),
+            current_thread: Spinlock::new(None),
         }
     }
 
-    pub fn runqueue(&mut self) -> ILockGuard<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>, 1> {
+    pub fn runqueue(&mut self) -> SpinlockGuard<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>, 1> {
         self.runqueue.lock()
     }
 
-    pub fn runqueue_mut(&mut self) -> ILockGuardMut<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>, 1> {
+    pub fn runqueue_mut(
+        &mut self,
+    ) -> SpinlockGuardMut<RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>, 1> {
         self.runqueue.lock_mut()
     }
 
-    pub fn tcbs(&mut self) -> ILockGuard<TCBs, 2> {
+    pub fn tcbs(&mut self) -> SpinlockGuard<TCBs, 2> {
         self.tcbs.lock()
     }
 
-    pub fn tcbs_mut(&mut self) -> ILockGuardMut<TCBs, 2> {
+    pub fn tcbs_mut(&mut self) -> SpinlockGuardMut<TCBs, 2> {
         self.tcbs.lock_mut()
     }
 
-    pub fn thread_blocklist(&mut self) -> ILockGuard<[Option<ThreadId>; THREADS_NUMOF], 3> {
+    pub fn thread_blocklist(&mut self) -> SpinlockGuard<[Option<ThreadId>; THREADS_NUMOF], 3> {
         self.thread_blocklist.lock()
     }
 
-    pub fn thread_blocklist_mut(&mut self) -> ILockGuardMut<[Option<ThreadId>; THREADS_NUMOF], 3> {
+    pub fn thread_blocklist_mut(
+        &mut self,
+    ) -> SpinlockGuardMut<[Option<ThreadId>; THREADS_NUMOF], 3> {
         self.thread_blocklist.lock_mut()
     }
 
     #[cfg(feature = "multicore")]
     pub fn current_threads(
         &mut self,
-    ) -> ILockGuard<[Option<(ThreadId, RunqueueId)>; CORES_NUMOF], 4> {
+    ) -> SpinlockGuard<[Option<(ThreadId, RunqueueId)>; CORES_NUMOF], 4> {
         self.current_threads.lock()
     }
 
@@ -176,7 +180,7 @@ macro_rules! access_multiple {
     ($i:literal struct $($mut:ident)? => $prop:ident: $prop_ty:ty) => {
         paste! {
             pub struct [<With $($mut)? T $prop>]<'a, TInner> {
-                pub $prop: [<ILockGuard $($mut)?>]<'a, $prop_ty, $i>,
+                pub $prop: [<SpinlockGuard $($mut)?>]<'a, $prop_ty, $i>,
                 inner: TInner
             }
             impl<'a, TInner> Deref for [<With $($mut)? T $prop>]<'a, TInner> {

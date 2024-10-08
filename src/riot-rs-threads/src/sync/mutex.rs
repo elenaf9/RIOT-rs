@@ -5,11 +5,11 @@ use core::{
 
 use riot_rs_runqueue::{RunqueueId, ThreadId};
 
-use crate::{sync::ILock, thread::ThreadState, threadlist::ThreadList, THREADS};
+use crate::{sync::Spinlock, thread::ThreadState, threadlist::ThreadList, THREADS};
 
 /// A basic mutex with priority inheritance.
 pub struct Mutex<T> {
-    state: ILock<LockState>,
+    state: Spinlock<LockState>,
     inner: UnsafeCell<T>,
 }
 
@@ -29,7 +29,7 @@ impl<T> Mutex<T> {
     /// Creates new **unlocked** [`Mutex`].
     pub const fn new(value: T) -> Self {
         Self {
-            state: ILock::new(LockState::Unlocked),
+            state: Spinlock::new(LockState::Unlocked),
             inner: UnsafeCell::new(value),
         }
     }

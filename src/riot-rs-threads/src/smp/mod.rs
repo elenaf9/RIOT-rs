@@ -61,7 +61,7 @@ pub trait Multicore {
 cfg_if::cfg_if! {
     if #[cfg(all(feature = "multicore", context = "rp2040"))] {
         mod rp2040;
-        pub use rp2040::Chip;
+        pub use rp2040::{Chip, Spinlock};
     } else if #[cfg(all(feature = "multicore", context = "esp32s3"))] {
         mod esp32s3;
         pub use esp32s3::Chip;
