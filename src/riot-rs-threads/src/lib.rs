@@ -227,10 +227,12 @@ impl Threads {
         // a currently running thread is not in the runqueue and therefore the runqueue changes
         // should not be applied.
         #[cfg(feature = "multicore")]
-        match self.is_running(thread_id) {
-            Some(core) if new_prio < old_prio => return schedule_on_core(CoreId(core as u8)),
-            Some(_) => return,
-            _ => {}
+        if let Some(core) = self.is_running(thread_id) {
+            self.current_threads_mut()[core] = Some((thread_id, new_prio));
+            if new_prio < old_prio {
+                schedule_on_core(CoreId(core as u8));
+            }
+            return;
         }
 
         // Update the runqueue.
@@ -243,11 +245,14 @@ impl Threads {
         // Check & handle if the thread is among the current threads for single-core,
         // analogous to the above multicore implementation.
         #[cfg(not(feature = "multicore"))]
-        match self.is_running(thread_id) {
-            Some(_) if new_prio < old_prio => return schedule(),
-            Some(_) => return,
-            _ => {}
+        if self.is_running(thread_id).is_some() {
+            *self.current_thread_mut() = Some((thread_id, new_prio));
+            if new_prio < old_prio {
+                schedule()
+            }
+            return;
         }
+
         // Thread isn't running.
         // Only schedule if the thread has a higher priority than a running one.
         if new_prio > old_prio {

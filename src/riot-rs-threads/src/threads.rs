@@ -75,11 +75,28 @@ impl Threads {
         self.thread_blocklist.lock_mut()
     }
 
+    #[cfg(not(feature = "multicore"))]
+    pub fn current_thread(&mut self) -> SpinlockGuard<Option<(ThreadId, RunqueueId)>, 4> {
+        self.current_thread.lock()
+    }
+
+    #[cfg(not(feature = "multicore"))]
+    pub fn current_thread_mut(&mut self) -> SpinlockGuardMut<Option<(ThreadId, RunqueueId)>, 4> {
+        self.current_thread.lock_mut()
+    }
+
     #[cfg(feature = "multicore")]
     pub fn current_threads(
         &mut self,
     ) -> SpinlockGuard<[Option<(ThreadId, RunqueueId)>; CORES_NUMOF], 4> {
         self.current_threads.lock()
+    }
+
+    #[cfg(feature = "multicore")]
+    pub fn current_threads_mut(
+        &mut self,
+    ) -> SpinlockGuardMut<[Option<(ThreadId, RunqueueId)>; CORES_NUMOF], 4> {
+        self.current_threads.lock_mut()
     }
 
     /// Returns the ID of the current thread, or [`None`] if no thread is currently
