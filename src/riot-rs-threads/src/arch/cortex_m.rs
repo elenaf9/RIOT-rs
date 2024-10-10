@@ -3,7 +3,7 @@ use core::ptr::write_volatile;
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
 use riot_rs_runqueue::GlobalRunqueue as _;
 
-use crate::{cleanup, smp::Multicore, Arch, Thread, THREADS};
+use crate::{cleanup, Arch, Thread, THREADS};
 
 #[cfg(not(any(armv6m, armv7m, armv8m)))]
 compile_error!("no supported ARM variant selected");
@@ -187,7 +187,7 @@ unsafe extern "C" fn PendSV() {
 // TODO: make arch independent, or move to arch
 #[no_mangle]
 unsafe fn sched() -> u128 {
-    let core = crate::smp::Chip::core_id();
+    let core = crate::core_id();
     loop {
         if let Some(res) = critical_section::with(|cs| {
             let threads = unsafe { &mut *THREADS.as_ptr(cs) };

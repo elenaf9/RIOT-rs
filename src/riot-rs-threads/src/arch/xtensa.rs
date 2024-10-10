@@ -5,7 +5,7 @@ use esp_hal::{
 };
 use riot_rs_runqueue::GlobalRunqueue as _;
 
-use crate::{cleanup, Arch, Multicore, THREADS};
+use crate::{cleanup, Arch, THREADS};
 
 pub struct Cpu;
 
@@ -115,7 +115,7 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 /// It should only be called from inside the trap handler that is responsible for
 /// context switching.
 unsafe fn sched(trap_frame: &mut TrapFrame) {
-    let core = crate::smp::Chip::core_id();
+    let core = crate::core_id();
     loop {
         if THREADS.with_mut(|mut threads| {
             let Some(next_pid) = threads.runqueue.get_next(core) else {
