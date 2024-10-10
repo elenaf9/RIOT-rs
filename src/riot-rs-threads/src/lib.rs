@@ -32,9 +32,11 @@
 mod arch;
 mod autostart_thread;
 mod ensure_once;
-mod smp;
 mod thread;
 mod threadlist;
+
+#[cfg(feature = "multi-core")]
+mod smp;
 
 pub mod sync;
 pub mod thread_flags;
@@ -48,7 +50,6 @@ pub mod macro_reexports {
 }
 
 pub use riot_rs_runqueue::{CoreId, RunqueueId, ThreadId};
-use static_cell::ConstStaticCell;
 pub use thread_flags as flags;
 
 #[doc(hidden)]
@@ -57,8 +58,17 @@ pub use arch::schedule;
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::{GlobalRunqueue, RunQueue};
-use smp::{schedule_on_core, Chip, Multicore};
 use thread::{Thread, ThreadState};
+
+#[cfg(feature = "multi-core")]
+use smp::{schedule_on_core, Chip, Multicore};
+#[cfg(feature = "multi-core")]
+use static_cell::ConstStaticCell;
+
+#[cfg(not(feature = "multi-core"))]
+fn schedule_on_core(_: CoreId) {
+    schedule()
+}
 
 /// The number of possible priority levels.
 pub const SCHED_PRIO_LEVELS: usize = 12;
@@ -66,6 +76,7 @@ pub const SCHED_PRIO_LEVELS: usize = 12;
 /// The maximum number of concurrent threads that can be created.
 pub const THREADS_NUMOF: usize = 16;
 
+#[cfg(feature = "multi-core")]
 pub const CORES_NUMOF: usize = smp::Chip::CORES as usize;
 
 static THREADS: EnsureOnce<Threads> = EnsureOnce::new(Threads::new());
@@ -78,14 +89,22 @@ pub static THREAD_FNS: [ThreadFn] = [..];
 /// Struct holding all scheduler state
 struct Threads {
     /// Global thread runqueue.
+    #[cfg(not(feature = "multi-core"))]
+    runqueue: RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF>,
+    #[cfg(feature = "multi-core")]
     runqueue: RunQueue<SCHED_PRIO_LEVELS, THREADS_NUMOF, CORES_NUMOF>,
     /// The actual TCBs.
     threads: [Thread; THREADS_NUMOF],
     /// `Some` when a thread is blocking another thread due to conflicting
     /// resource access.
     thread_blocklist: [Option<ThreadId>; THREADS_NUMOF],
-    /// The currently running thread.
+    /// The currently running thread
+
+    /// The currently running thread(s).
+    #[cfg(feature = "multi-core")]
     current_threads: [Option<ThreadId>; CORES_NUMOF],
+    #[cfg(not(feature = "multi-core"))]
+    current_thread: Option<ThreadId>,
 }
 
 impl Threads {
@@ -94,7 +113,10 @@ impl Threads {
             runqueue: RunQueue::new(),
             threads: [const { Thread::default() }; THREADS_NUMOF],
             thread_blocklist: [const { None }; THREADS_NUMOF],
+            #[cfg(feature = "multi-core")]
             current_threads: [None; CORES_NUMOF],
+            #[cfg(not(feature = "multi-core"))]
+            current_thread: None,
         }
     }
 
@@ -112,11 +134,26 @@ impl Threads {
     }
 
     fn current_pid(&self) -> Option<ThreadId> {
-        self.current_threads[usize::from(core_id())]
+        #[cfg(feature = "multi-core")]
+        {
+            self.current_threads[usize::from(core_id())]
+        }
+        #[cfg(not(feature = "multi-core"))]
+        {
+            self.current_thread
+        }
     }
 
+    #[allow(dead_code, reason = "used in scheduler implementation")]
     fn current_pid_mut(&mut self) -> &mut Option<ThreadId> {
-        &mut self.current_threads[usize::from(core_id())]
+        #[cfg(feature = "multi-core")]
+        {
+            &mut self.current_threads[usize::from(core_id())]
+        }
+        #[cfg(not(feature = "multi-core"))]
+        {
+            &mut self.current_thread
+        }
     }
 
     /// Creates a new thread.
@@ -199,7 +236,17 @@ impl Threads {
         let core = match (old_state, state) {
             (old, new) if old == new => None,
             (_, ThreadState::Running) => self.runqueue.add(thread.pid, thread.prio),
-            (ThreadState::Running, _) => self.runqueue.del(thread.pid, thread.prio),
+            (ThreadState::Running, _) => {
+                #[cfg(not(feature = "multi-core"))]
+                {
+                    self.runqueue.pop_head(thread.pid, thread.prio);
+                    Some(CoreId::new(0))
+                }
+                #[cfg(feature = "multi-core")]
+                {
+                    self.runqueue.del(thread.pid, thread.prio)
+                }
+            }
             _ => None,
         };
         (old_state, core)
@@ -258,25 +305,27 @@ impl Threads {
 /// Currently it expects at least:
 /// - Cortex-M: to be called from the reset handler while MSP is active
 pub unsafe fn start_threading() {
-    // Idle thread that prompts the core to enter deep sleep.
-    fn idle_thread() {
-        loop {
-            Cpu::wfi();
+    #[cfg(feature = "multi-core")]
+    {
+        // Idle thread that prompts the core to enter deep sleep.
+        fn idle_thread() {
+            loop {
+                Cpu::wfi();
+            }
         }
+
+        // Stacks for the idle threads.
+        // Creating them inside the below for-loop is not possible because it would result in
+        // duplicate identifiers for the created `static`.
+        static STACKS: [ConstStaticCell<[u8; Chip::IDLE_THREAD_STACK_SIZE]>; CORES_NUMOF] =
+            [const { ConstStaticCell::new([0u8; Chip::IDLE_THREAD_STACK_SIZE]) }; CORES_NUMOF];
+
+        // Create one idle thread for each core with lowest priority.
+        for stack in &STACKS {
+            thread_create_noarg(idle_thread, stack.take(), 0);
+        }
+        smp::Chip::startup_cores();
     }
-
-    // Stacks for the idle threads.
-    // Creating them inside the below for-loop is not possible because it would result in
-    // duplicate identifiers for the created `static`.
-    static STACKS: [ConstStaticCell<[u8; Chip::IDLE_THREAD_STACK_SIZE]>; CORES_NUMOF] =
-        [const { ConstStaticCell::new([0u8; Chip::IDLE_THREAD_STACK_SIZE]) }; CORES_NUMOF];
-
-    // Create one idle thread for each core with lowest priority.
-    for stack in &STACKS {
-        thread_create_noarg(idle_thread, stack.take(), 0);
-    }
-
-    smp::Chip::startup_cores();
     Cpu::start_threading();
 }
 
@@ -366,7 +415,14 @@ pub fn current_pid() -> Option<ThreadId> {
 
 /// Returns the id of the CPU that this thread is running on.
 pub fn core_id() -> CoreId {
-    smp::Chip::core_id() as CoreId
+    #[cfg(feature = "multi-core")]
+    {
+        smp::Chip::core_id() as CoreId
+    }
+    #[cfg(not(feature = "multi-core"))]
+    {
+        CoreId::new(0)
+    }
 }
 
 /// Checks if a given [`ThreadId`] is valid.
