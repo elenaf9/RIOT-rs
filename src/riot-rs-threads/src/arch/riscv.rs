@@ -1,4 +1,4 @@
-use crate::{cleanup, Arch, Multicore, Thread, THREADS};
+use crate::{cleanup, Arch, Thread, THREADS};
 #[cfg(context = "esp32c6")]
 use esp_hal::peripherals::INTPRI as SYSTEM;
 #[cfg(context = "esp32c3")]
@@ -124,7 +124,7 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 /// It should only be called from inside the trap handler that is responsible for
 /// context switching.
 unsafe fn sched(trap_frame: &mut TrapFrame) {
-    let core = crate::smp::Chip::core_id();
+    let core = crate::core_id();
     loop {
         if THREADS.with_mut(|mut threads| {
             let next_pid = match threads.runqueue.get_next(core) {
