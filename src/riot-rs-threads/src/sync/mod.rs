@@ -8,8 +8,8 @@ pub use channel::Channel;
 pub use lock::Lock;
 pub use mutex::{Mutex, MutexGuard};
 pub use spinlock::{
-    Cs, GenericSpinlock, GenericSpinlockGuard, GenericSpinlockGuardMut, Spinlock, SpinlockGuard,
-    SpinlockGuardMut,
+    Cs, GenericSpinlock, GenericSpinlockGuard, GenericSpinlockGuardMut, Spinlock, SpinlockBackend,
+    SpinlockGuard, SpinlockGuardMut,
 };
 
 #[cfg(target_has_atomic)]
