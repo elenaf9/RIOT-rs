@@ -105,38 +105,6 @@ impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
         }
     }
 
-    /// Adds thread with pid `n` to runqueue number `rq`.
-    fn add(&mut self, n: ThreadId, rq: RunqueueId) {
-        debug_assert!(usize::from(n) < N_THREADS);
-        debug_assert!(usize::from(rq) < N_QUEUES);
-        self.bitcache |= 1 << rq.0;
-        self.queues.push(n.0, rq.0);
-    }
-
-    /// Removes thread with pid `n` from runqueue number `rq`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `n` is not the queue's head.
-    /// This is fine, RIOT-rs only ever calls `pop_head()` for the current thread.
-    pub fn pop_head(&mut self, n: ThreadId, rq: RunqueueId) {
-        debug_assert!(usize::from(n) < N_THREADS);
-        debug_assert!(usize::from(rq) < N_QUEUES);
-        let popped = self.queues.pop_head(rq.0);
-        //
-        assert_eq!(popped, Some(n.0));
-        if self.queues.is_empty(rq.0) {
-            self.bitcache &= !(1 << rq.0);
-        }
-    }
-
-    /// Removes thread with pid `n`.
-    fn del(&mut self, n: ThreadId) {
-        if let Some(empty_runqueue) = self.queues.del(n.0) {
-            self.bitcache &= !(1 << empty_runqueue);
-        }
-    }
-
     /// Returns the `n` highest priority threads in the [`RunQueue`].
     ///
     /// This iterates through all non-empty runqueues with descending
@@ -194,6 +162,14 @@ pub trait GlobalRunqueue<const N_CORES: usize> {
 
     /// Removes thread with pid `n` from runqueue number `rq`.
     ///
+    /// # Panics
+    ///
+    /// Panics if `n` is not the queue's head.
+    /// This is fine, RIOT-rs only ever calls `pop_head()` for the current thread.
+    fn pop_head(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId>;
+
+    /// Removes thread with pid `n` from runqueue number `rq`.
+    ///
     /// Returns a [`CoreId`] if the allocation for this core changed.
     ///
     /// # Panics
@@ -232,23 +208,44 @@ impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize> Global
     for RunQueue<N_QUEUES, N_THREADS, N_CORES>
 {
     default fn add(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
-        RunQueue::<N_QUEUES, N_THREADS, N_CORES>::add(self, n, rq);
+        debug_assert!(usize::from(n) < N_THREADS);
+        debug_assert!(usize::from(rq) < N_QUEUES);
+        self.bitcache |= 1 << rq.0;
+        self.queues.push(n.0, rq.0);
+        self.reallocate()
+    }
+
+    default fn pop_head(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
+        debug_assert!(usize::from(n) < N_THREADS);
+        debug_assert!(usize::from(rq) < N_QUEUES);
+        let popped = self.queues.pop_head(rq.0);
+        debug_assert_eq!(popped, Some(n.0));
+        if self.queues.is_empty(rq.0) {
+            self.bitcache &= !(1 << rq.0);
+        }
         self.reallocate()
     }
 
     default fn del(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
         if self.queues.peek_head(rq.0) == Some(n.0) {
-            self.pop_head(n, rq);
+            self.pop_head(n, rq)
         } else {
-            self.del(n);
+            if let Some(empty_runqueue) = self.queues.del(n.0) {
+                self.bitcache &= !(1 << empty_runqueue);
+            }
+            if !self.next.contains(&Some(n)) {
+                return None;
+            }
+            self.reallocate()
         }
-        self.reallocate()
     }
 
     default fn advance(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
         debug_assert!((rq.0 as usize) < N_QUEUES);
         if self.queues.peek_head(rq.0) == Some(n.0) {
-            self.queues.advance(rq.0);
+            if !self.queues.advance(rq.0) {
+                return None;
+            }
         } else {
             // If the thread is not the head remove it
             // from queue and re-insert it at tail.
@@ -283,9 +280,11 @@ impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize> Global
     }
 
     default fn get_next(&self, core: CoreId) -> Option<ThreadId> {
-        if usize::from(core) >= N_CORES {
-            return None;
-        }
+        debug_assert!(
+            (core.0 as usize) < N_CORES,
+            "CoreId should be < {}",
+            N_CORES
+        );
         self.next[usize::from(core)]
     }
 }
@@ -294,26 +293,32 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> GlobalRunqueue<1>
     for RunQueue<N_QUEUES, N_THREADS>
 {
     fn add(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
+        debug_assert!(usize::from(n) < N_THREADS);
+        debug_assert!(usize::from(rq) < N_QUEUES);
         let bitcache = self.bitcache;
-        RunQueue::<N_QUEUES, N_THREADS>::add(self, n, rq);
-        (self.bitcache > bitcache).then(|| CoreId(0))
+        self.bitcache |= 1 << rq.0;
+        self.queues.push(n.0, rq.0);
+        if self.bitcache == bitcache {
+            return None;
+        }
+        self.reallocate()
     }
 
-    /// Advances runqueue number `rq`.
-    ///
-    /// This is used to "yield" to another thread of *the same* priority.
-    ///
-    /// Returns a [`CoreId`] if the allocation for this core changed.
     fn advance(&mut self, _: ThreadId, rq: RunqueueId) -> Option<CoreId> {
         debug_assert!((rq.0 as usize) < N_QUEUES);
-        self.queues.advance(rq.0).then(|| CoreId(0))
-    }
-
-    fn get_next(&self, _core: CoreId) -> Option<ThreadId> {
-        self.peek_bitcache_head(self.bitcache)
+        if self.queues.advance(rq.0) {
+            self.reallocate()
+        } else {
+            None
+        }
     }
 
     fn reallocate(&mut self) -> Option<CoreId> {
+        let next = self.peek_bitcache_head(self.bitcache);
+        if self.next[0] == next {
+            return None;
+        }
+        self.next[0] = next;
         Some(CoreId(0))
     }
 }
@@ -477,12 +482,15 @@ mod clist {
         }
 
         pub fn advance(&mut self, rq: u8) -> bool {
-            if let Some(head) = self.peek_head(rq) {
-                self.tail[rq as usize] = head;
-                true
-            } else {
-                false
+            let tail = self.tail[rq as usize];
+            let head = self.next_idxs[tail as usize];
+            if tail == head {
+                // Catches the case that the runqueue only has a single element,
+                // or is empty (in which case head == tail == Self::sentinel())
+                return false;
             }
+            self.tail[rq as usize] = head;
+            true
         }
 
         pub fn peek_next(&self, curr: u8) -> u8 {
