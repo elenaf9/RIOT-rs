@@ -236,8 +236,7 @@ impl Threads {
             (ThreadState::Running, _) => {
                 #[cfg(not(feature = "multi-core"))]
                 {
-                    self.runqueue.pop_head(thread.pid, thread.prio);
-                    Some(CoreId::new(0))
+                    self.runqueue.pop_head(thread.pid, thread.prio)
                 }
                 #[cfg(feature = "multi-core")]
                 {
@@ -269,24 +268,23 @@ impl Threads {
     /// might have changed.
     /// `false` if the thread isn't in the runqueue (in which case the priority is still changed)
     /// or if the new priority equals the current one.
-    fn set_priority(&mut self, thread_id: ThreadId, prio: RunqueueId) -> bool {
+    fn set_priority(&mut self, thread_id: ThreadId, prio: RunqueueId) -> Option<CoreId> {
         if !self.is_valid_pid(thread_id) {
-            return false;
+            return None;
         }
         let thread = self.get_unchecked_mut(thread_id);
         let old_prio = thread.prio;
         if old_prio == prio {
-            return false;
+            return None;
         }
         thread.prio = prio;
         if thread.state != ThreadState::Running {
-            return false;
+            return None;
         }
 
-        self.runqueue.del(thread_id, old_prio);
-        self.runqueue.add(thread_id, prio);
-
-        true
+        let sched_after_del = self.runqueue.del(thread_id, old_prio);
+        let sched_after_add = self.runqueue.add(thread_id, prio);
+        sched_after_del.or(sched_after_add)
     }
 }
 
@@ -483,8 +481,8 @@ pub fn get_priority(thread_id: ThreadId) -> Option<RunqueueId> {
 /// This might trigger a context switch.
 pub fn set_priority(thread_id: ThreadId, prio: RunqueueId) {
     THREADS.with_mut(|mut threads| {
-        if threads.set_priority(thread_id, prio) {
-            schedule();
+        if let Some(core) = threads.set_priority(thread_id, prio) {
+            schedule_on_core(core);
         }
     })
 }

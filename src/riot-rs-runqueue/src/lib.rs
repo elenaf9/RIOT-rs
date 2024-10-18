@@ -257,6 +257,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "CoreId should be <")]
     fn multicore_invalid_core() {
         let mut runqueue: RunQueue<8, 32, 2> = RunQueue::new();
         assert_eq!(
@@ -269,7 +270,7 @@ mod tests {
         );
         assert_eq!(runqueue.get_next(CoreId::new(0)), Some(ThreadId::new(0)));
         assert_eq!(runqueue.get_next(CoreId::new(1)), Some(ThreadId::new(1)));
-        // Querying for n > `N_CORES` shouldn't cause a panic.
+        // Querying for n > `N_CORES` should cause a panic.
         assert_eq!(runqueue.get_next(CoreId::new(2)), None)
     }
 
