@@ -2,6 +2,7 @@
 use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut},
+    sync::atomic::Ordering,
 };
 
 pub use backend_cs::Cs;
@@ -70,6 +71,7 @@ where
         while !self.backend.try_acquire() {
             core::hint::spin_loop();
         }
+        core::sync::atomic::fence(Ordering::Acquire);
         GenericSpinlockGuard { lock: self }
     }
 
@@ -78,14 +80,17 @@ where
         while !self.backend.try_acquire_mut() {
             core::hint::spin_loop();
         }
+        core::sync::atomic::fence(Ordering::Acquire);
         GenericSpinlockGuardMut { lock: self }
     }
 
     fn release(&self) {
+        core::sync::atomic::fence(Ordering::Release);
         self.backend.release();
     }
 
     fn release_mut(&self) {
+        core::sync::atomic::fence(Ordering::Release);
         self.backend.release_mut();
     }
 }
@@ -269,9 +274,7 @@ mod backend_noop {
 /// Backend that uses atomics to represent the spinlock state.
 #[cfg(target_has_atomic)]
 mod backend_atomic {
-    use core::sync::atomic::Ordering;
-
-    use core::sync::atomic::{AtomicBool, AtomicUsize};
+    use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use super::SpinlockBackend;
 
@@ -290,11 +293,11 @@ mod backend_atomic {
 
     impl<const N: usize> SpinlockBackend<N> for Atomic {
         fn try_acquire_mut(&self) -> bool {
-            self.state.swap(false, Ordering::AcqRel)
+            self.state.swap(false, Ordering::Relaxed)
         }
 
         fn release_mut(&self) {
-            self.state.store(true, Ordering::Release);
+            self.state.store(true, Ordering::Relaxed);
         }
     }
 
@@ -315,7 +318,7 @@ mod backend_atomic {
     impl<const N: usize> SpinlockBackend<N> for AtomicRw {
         fn try_acquire(&self) -> bool {
             self.state
-                .fetch_update(Ordering::Acquire, Ordering::Acquire, |val| {
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |val| {
                     (val < usize::MAX).then_some(val + 1)
                 })
                 .is_ok()
@@ -323,16 +326,16 @@ mod backend_atomic {
 
         fn try_acquire_mut(&self) -> bool {
             self.state
-                .compare_exchange(0, usize::MAX, Ordering::Acquire, Ordering::Acquire)
+                .compare_exchange(0, usize::MAX, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
         }
 
         fn release(&self) {
-            self.state.fetch_sub(1, Ordering::Release);
+            self.state.fetch_sub(1, Ordering::Relaxed);
         }
 
         fn release_mut(&self) {
-            self.state.store(0, Ordering::Release);
+            self.state.store(0, Ordering::Relaxed);
         }
     }
 }
