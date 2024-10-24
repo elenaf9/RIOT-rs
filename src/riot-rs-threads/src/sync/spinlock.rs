@@ -40,7 +40,7 @@ type Backend<const N: usize> = Hardware<N>;
 
 // RP2040 doesn't have atomic, so no duplicated identifier here.
 #[cfg(all(feature = "multi-core", target_has_atomic))]
-type Backend<const N: usize> = Atomic;
+type Backend<const N: usize> = AtomicRw;
 
 #[cfg(all(
     feature = "multi-core",
