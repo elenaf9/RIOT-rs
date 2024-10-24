@@ -1,9 +1,3 @@
-use crate::{
-    arch::{Arch, Cpu},
-    CoreId,
-};
-
-use super::Multicore;
 use embassy_rp::{
     interrupt,
     interrupt::InterruptExt as _,
@@ -12,6 +6,12 @@ use embassy_rp::{
 };
 use rp_pac::SIO;
 use static_cell::ConstStaticCell;
+
+use super::ISR_STACKSIZE_CORE1;
+use crate::{
+    arch::{Arch, Cpu},
+    CoreId, Multicore,
+};
 
 pub struct Chip;
 
@@ -23,7 +23,10 @@ impl Multicore for Chip {
     }
 
     fn startup_cores() {
-        static STACK: ConstStaticCell<Stack<4096>> = ConstStaticCell::new(Stack::new());
+        // TODO: How much stack do we really need here?
+        static STACK: ConstStaticCell<Stack<ISR_STACKSIZE_CORE1>> =
+            ConstStaticCell::new(Stack::new());
+        // Trigger scheduler.
         let start_threading = move || {
             unsafe {
                 interrupt::SIO_IRQ_PROC1.enable();

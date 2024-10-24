@@ -1,3 +1,5 @@
+use riot_rs_utils::usize_from_env_or;
+
 use super::CoreId;
 
 pub trait Multicore {
@@ -40,3 +42,15 @@ cfg_if::cfg_if! {
 pub fn schedule_on_core(id: CoreId) {
     Chip::schedule_on_core(id);
 }
+
+/// Main stack size for the second core, that is also used by the ISR.
+///
+/// Uses default from `riot-rs-rt` if not specified.
+/// The `CONFIG_ISR_STACKSIZE` env name and default is copied from
+/// `riot-rs-rt`.
+#[allow(dead_code, reason = "used in chip submodules")]
+const ISR_STACKSIZE_CORE1: usize = usize_from_env_or!(
+    "CONFIG_ISR_STACKSIZE_CORE1",
+    usize_from_env_or!("CONFIG_ISR_STACKSIZE", 8192, "ISR stack size (in bytes)"),
+    "Core 1 ISR stack size (in bytes)"
+);
