@@ -199,7 +199,13 @@ unsafe fn sched() -> u128 {
     loop {
         if let Some(res) = critical_section::with(|cs| {
             let threads = unsafe { &mut *THREADS.as_ptr(cs) };
-            let next_pid = threads.runqueue.get_next(core)?;
+            let next_pid = match threads.runqueue.get_next(core) {
+                Some(pid) => pid,
+                None => {
+                    Cpu::wfi();
+                    return None;
+                }
+            };
 
             // `current_high_regs` will be null if there is no current thread.
             // This is only the case once, when the very first thread starts running.
@@ -235,6 +241,5 @@ unsafe fn sched() -> u128 {
         }) {
             break res;
         }
-        Cpu::wfi();
     }
 }

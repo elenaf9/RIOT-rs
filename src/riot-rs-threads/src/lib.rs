@@ -48,6 +48,7 @@ pub mod macro_reexports {
 }
 
 pub use riot_rs_runqueue::{CoreId, RunqueueId, ThreadId};
+use static_cell::ConstStaticCell;
 pub use thread_flags as flags;
 
 #[doc(hidden)]
@@ -56,7 +57,7 @@ pub use arch::schedule;
 use arch::{Arch, Cpu, ThreadData};
 use ensure_once::EnsureOnce;
 use riot_rs_runqueue::{GlobalRunqueue, RunQueue};
-use smp::{schedule_on_core, Multicore};
+use smp::{schedule_on_core, Chip, Multicore};
 use thread::{Thread, ThreadState};
 
 /// The number of possible priority levels.
@@ -257,6 +258,24 @@ impl Threads {
 /// Currently it expects at least:
 /// - Cortex-M: to be called from the reset handler while MSP is active
 pub unsafe fn start_threading() {
+    // Idle thread that prompts the core to enter deep sleep.
+    fn idle_thread() {
+        loop {
+            Cpu::wfi();
+        }
+    }
+
+    // Stacks for the idle threads.
+    // Creating them inside the below for-loop is not possible because it would result in
+    // duplicate identifiers for the created `static`.
+    static STACKS: [ConstStaticCell<[u8; Chip::IDLE_THREAD_STACK_SIZE]>; CORES_NUMOF] =
+        [const { ConstStaticCell::new([0u8; Chip::IDLE_THREAD_STACK_SIZE]) }; CORES_NUMOF];
+
+    // Create one idle thread for each core with lowest priority.
+    for stack in &STACKS {
+        thread_create_noarg(idle_thread, stack.take(), 0);
+    }
+
     smp::Chip::startup_cores();
     Cpu::start_threading();
 }

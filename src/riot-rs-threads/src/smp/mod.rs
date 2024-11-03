@@ -2,6 +2,8 @@ use super::CoreId;
 
 pub trait Multicore {
     const CORES: u32;
+    /// Stack size for the idle threads.
+    const IDLE_THREAD_STACK_SIZE: usize = 256;
 
     fn core_id() -> CoreId;
 
