@@ -28,7 +28,7 @@ impl ThreadList {
             let prio = threads.get_priority(pid);
             let mut curr = None;
             let mut next = self.head;
-            let mut thread_blocklist = threads.thread_blocklist.lock();
+            let mut thread_blocklist = threads.thread_blocklist();
             while let Some(n) = next {
                 if threads.get_priority(n) < prio {
                     break;
@@ -54,7 +54,7 @@ impl ThreadList {
     pub fn pop(&mut self, cs: CriticalSection) -> Option<(ThreadId, ThreadState)> {
         let head = self.head?;
         THREADS.with_cs(cs, |threads| {
-            self.head = threads.thread_blocklist.lock()[usize::from(head)].take();
+            self.head = threads.thread_blocklist()[usize::from(head)].take();
             let old_state = threads.set_state(head, ThreadState::Running);
             Some((head, old_state))
         })

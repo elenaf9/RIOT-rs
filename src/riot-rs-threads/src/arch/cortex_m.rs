@@ -214,23 +214,27 @@ unsafe fn sched() -> u128 {
                 }
             };
 
-            let mut tcbs = threads.threads.lock();
+            let mut tcbs = threads.tcbs();
+            let mut current_threads = threads.current_threads();
+
             // `current_high_regs` will be null if there is no current thread.
             // This is only the case once, when the very first thread starts running.
             // The returned `r1` therefore will be null, and saving/ restoring
             // the context is skipped.
             let mut current_high_regs = core::ptr::null();
-            if let Some(current_pid) = threads.current_pid() {
-                if next_pid == current_pid {
+            let current_pid = current_threads.current_pid_mut();
+            if let Some(current_pid) = current_pid {
+                if next_pid == *current_pid {
                     return Some(0);
                 }
-                let current = &mut tcbs[usize::from(current_pid)];
+                let current = tcbs.get_unchecked_mut(*current_pid);
                 current.sp = cortex_m::register::psp::read() as usize;
                 current_high_regs = current.data.as_ptr();
-            };
-            threads.set_current_pid(next_pid);
+            }
+            *current_pid = Some(next_pid);
+            current_threads.release();
 
-            let next = &tcbs[usize::from(next_pid)];
+            let next = tcbs.get_unchecked(next_pid);
             let next_sp = next.sp;
             let next_high_regs = next.data.as_ptr();
 
