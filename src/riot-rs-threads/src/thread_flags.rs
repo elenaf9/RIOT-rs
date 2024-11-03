@@ -101,7 +101,7 @@ pub fn get() -> ThreadFlags {
 
 impl Threads {
     // thread flags implementation
-    fn flag_set(&self, thread_id: ThreadId, mask: ThreadFlags) {
+    fn flag_set(&mut self, thread_id: ThreadId, mask: ThreadFlags) {
         let mut tcbs = self.tcbs();
         let thread = tcbs.get_unchecked_mut(thread_id);
         thread.flags |= mask;
@@ -114,7 +114,7 @@ impl Threads {
         self.set_state(thread_id, ThreadState::Running);
     }
 
-    fn flag_wait<F>(&self, cond: F, mode: WaitMode) -> Option<ThreadFlags>
+    fn flag_wait<F>(&mut self, cond: F, mode: WaitMode) -> Option<ThreadFlags>
     where
         F: Fn(u16) -> Option<u16>,
     {
@@ -134,7 +134,7 @@ impl Threads {
         }
     }
 
-    fn flag_wait_all(&self, mask: ThreadFlags) -> Option<ThreadFlags> {
+    fn flag_wait_all(&mut self, mask: ThreadFlags) -> Option<ThreadFlags> {
         self.flag_wait(
             |thread_flags| {
                 let res = thread_flags & mask;
@@ -144,7 +144,7 @@ impl Threads {
         )
     }
 
-    fn flag_wait_any(&self, mask: ThreadFlags) -> Option<ThreadFlags> {
+    fn flag_wait_any(&mut self, mask: ThreadFlags) -> Option<ThreadFlags> {
         self.flag_wait(
             |thread_flags| {
                 let res = thread_flags & mask;
@@ -154,7 +154,7 @@ impl Threads {
         )
     }
 
-    fn flag_wait_one(&self, mask: ThreadFlags) -> Option<ThreadFlags> {
+    fn flag_wait_one(&mut self, mask: ThreadFlags) -> Option<ThreadFlags> {
         self.flag_wait(
             |thread_flags| {
                 let res = thread_flags & mask;

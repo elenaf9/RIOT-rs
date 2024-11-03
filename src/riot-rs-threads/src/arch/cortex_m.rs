@@ -1,4 +1,4 @@
-use crate::{cleanup, Arch, Thread, THREADS};
+use crate::{cleanup, Arch, Thread, Threads, THREADS};
 use core::arch::asm;
 use core::ptr::write_volatile;
 use cortex_m::peripheral::{scb::SystemHandler, SCB};
@@ -195,10 +195,15 @@ unsafe extern "C" fn PendSV() {
 unsafe fn sched() -> u128 {
     loop {
         if let Some(res) = THREADS.with(|threads| {
-            #[cfg(feature = "multi-core")]
-            threads.add_current_thread_to_rq();
+            let (mut guard, mut tcbs) = threads.with_tcbs();
+            let (mut guard, mut current_threads) = guard.with_current_threads();
+            let current_pid = current_threads.current_pid_mut();
+            let mut runqueue = guard.runqueue();
 
-            let next_pid = match threads.get_next_pid() {
+            #[cfg(feature = "multi-core")]
+            Threads::add_current_thread_to_rq(&mut runqueue, &tcbs, *current_pid);
+
+            let next_pid = match Threads::get_next_pid(&mut runqueue, &tcbs) {
                 Some(pid) => pid,
                 None => {
                     #[cfg(feature = "multi-core")]
@@ -213,26 +218,25 @@ unsafe fn sched() -> u128 {
                     }
                 }
             };
+            runqueue.release();
 
-            let mut tcbs = threads.tcbs();
-            let mut current_threads = threads.current_threads();
+            let old_pid  = *current_pid;
+            *current_pid = Some(next_pid);
+            current_threads.release();
 
             // `current_high_regs` will be null if there is no current thread.
             // This is only the case once, when the very first thread starts running.
             // The returned `r1` therefore will be null, and saving/ restoring
             // the context is skipped.
             let mut current_high_regs = core::ptr::null();
-            let current_pid = current_threads.current_pid_mut();
-            if let Some(current_pid) = current_pid {
-                if next_pid == *current_pid {
+            if let Some(current_pid) = old_pid {
+                if next_pid == current_pid {
                     return Some(0);
                 }
-                let current = tcbs.get_unchecked_mut(*current_pid);
+                let current = tcbs.get_unchecked_mut(current_pid);
                 current.sp = cortex_m::register::psp::read() as usize;
                 current_high_regs = current.data.as_ptr();
-            }
-            *current_pid = Some(next_pid);
-            current_threads.release();
+            };
 
             let next = tcbs.get_unchecked(next_pid);
             let next_sp = next.sp;

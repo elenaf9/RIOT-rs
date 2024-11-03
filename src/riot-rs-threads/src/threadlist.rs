@@ -25,22 +25,25 @@ impl ThreadList {
             let pid = threads
                 .current_pid()
                 .expect("Function should be called inside a thread context.");
-            let prio = threads.get_priority(pid);
+            let (mut guard, tcbs) = threads.with_tcbs();
+            let prio = tcbs.get_unchecked(pid).prio;
             let mut curr = None;
             let mut next = self.head;
-            let mut thread_blocklist = threads.thread_blocklist();
+            let mut thread_blocklist = guard.thread_blocklist();
             while let Some(n) = next {
-                if threads.get_priority(n) < prio {
+                if tcbs.get_unchecked(n).prio < prio {
                     break;
                 }
                 curr = next;
                 next = thread_blocklist[usize::from(n)];
             }
+            tcbs.release();
             thread_blocklist[usize::from(pid)] = next;
             match curr {
                 Some(curr) => thread_blocklist[usize::from(curr)] = Some(pid),
                 _ => self.head = Some(pid),
             }
+            thread_blocklist.release();
             threads.set_state(pid, state);
         });
     }

@@ -4,7 +4,7 @@ use esp_hal::{
     trapframe::TrapFrame,
 };
 
-use crate::{cleanup, Arch, THREADS};
+use crate::{cleanup, Arch, Threads, THREADS};
 
 pub struct Cpu;
 
@@ -104,29 +104,31 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 unsafe fn sched(trap_frame: &mut TrapFrame) {
     loop {
         if THREADS.with(|threads| {
-            #[cfg(feature = "multi-core")]
-            threads.add_current_thread_to_rq();
+            let (mut guard, mut tcbs) = threads.with_tcbs();
+            let (mut guard, mut current_threads) = guard.with_current_threads();
+            let current_pid = current_threads.current_pid_mut();
+            let mut runqueue = guard.runqueue();
 
-            let Some(next_pid) = threads.get_next_pid() else {
+            #[cfg(feature = "multi-core")]
+            Threads::add_current_thread_to_rq(&mut runqueue, &tcbs, *current_pid);
+
+            let Some(next_pid) = Threads::get_next_pid(&mut runqueue, &tcbs) else {
                 return false;
             };
+            runqueue.release();
 
-            let mut tcbs = threads.tcbs();
-            let mut current_threads = threads.current_threads();
-            let current_pid = current_threads.current_pid_mut();
-            if let Some(current_pid) = current_pid {
-                if next_pid == *current_pid {
-                    return true;
-                }
-
-                let current = tcbs.get_unchecked_mut(*current_pid);
-                current.data = *trap_frame;
-            }
+            let old_pid = *current_pid;
             *current_pid = Some(next_pid);
             current_threads.release();
 
-            let next = tcbs.get_unchecked(next_pid);
-            *trap_frame = next.data;
+            if let Some(current_pid) = old_pid {
+                if next_pid == current_pid {
+                    return true;
+                }
+                tcbs.get_unchecked_mut(current_pid).data = *trap_frame;
+            }
+            *trap_frame = tcbs.get_unchecked(next_pid).data;
+
             true
         }) {
             break;

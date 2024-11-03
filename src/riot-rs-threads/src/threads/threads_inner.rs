@@ -35,20 +35,20 @@ macro_rules! access_multiple {
             threads: &'a ThreadsInner,
         }
         impl ThreadsInner {
-            pub fn $prop(&self) -> SpinlockGuard<$prop_ty, $i> {
+            pub fn $prop(&mut self) -> SpinlockGuard<$prop_ty, $i> {
                 self.$prop.lock()
             }
-            pub fn [<with_ $prop>](&self) -> ( [<With $prop_ty>], SpinlockGuard<$prop_ty, $i>) {
+            pub fn [<with_ $prop>](&mut self) -> ( [<With $prop_ty>], SpinlockGuard<$prop_ty, $i>) {
                 ([<With $prop_ty>] {threads: self }, self.$prop.lock())
             }
         }
         $(
             impl<'a> [<With $prop_ty>]<'a> {
                 $(
-                    pub fn $n_prop(&self) -> SpinlockGuard<$n_prop_ty, $n_i> {
+                    pub fn $n_prop(&mut self) -> SpinlockGuard<$n_prop_ty, $n_i> {
                         self.threads.$n_prop.lock()
                     }
-                    pub fn [<with_ $n_prop>](&self) -> ( [<With $n_prop_ty>], SpinlockGuard<$n_prop_ty, $n_i>) {
+                    pub fn [<with_ $n_prop>](&mut self) -> ( [<With $n_prop_ty>], SpinlockGuard<$n_prop_ty, $n_i>) {
                         let $n_prop = self.threads.$n_prop.lock();
                         ([<With $n_prop_ty>] {threads: self.threads }, $n_prop )
                     }
