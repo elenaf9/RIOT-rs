@@ -107,6 +107,6 @@ unsafe fn sched(trap_frame: &mut TrapFrame) {
         // The esp-hal implementation of critical-section doesn't disable all interrupts.
         // Thus we should release our hold on `THREADS` before we `waiti`, to prevent
         // that another interrupt handler will try to borrow it while we still have it borrowed.
-        crate::smp::Chip::wait_for_wakeup();
+        Cpu::wfi();
     }
 }

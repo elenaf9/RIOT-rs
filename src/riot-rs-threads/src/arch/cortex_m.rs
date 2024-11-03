@@ -235,6 +235,6 @@ unsafe fn sched() -> u128 {
         }) {
             break res;
         }
-        crate::smp::Chip::wait_for_wakeup();
+        Cpu::wfi();
     }
 }
