@@ -3,7 +3,7 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(used_with_arg)]
 
-use riot_rs::{debug::log::*, network};
+use ariel_os::{debug::log::*, network};
 
 use embassy_net::udp::{PacketMetadata, UdpSocket};
 
@@ -19,7 +19,7 @@ use static_alloc::Bump;
 #[global_allocator]
 static A: Bump<[u8; 1 << 16]> = Bump::uninit();
 
-#[riot_rs::task(autostart)]
+#[ariel_os::task(autostart)]
 async fn coap_run() {
     let stack = network::network_stack().await.unwrap();
 
@@ -50,7 +50,7 @@ async fn coap_run() {
 }
 
 // FIXME: So far, this is necessary boiler plate; see ../README.md#networking for details
-#[riot_rs::config(network)]
+#[ariel_os::config(network)]
 fn network_config() -> embassy_net::Config {
     use embassy_net::Ipv4Address;
 
@@ -102,7 +102,7 @@ where
         .with_wkc();
 
     let mut handler = seccontext::OscoreEdhocHandler::new(own_identity, handler, stdout, || {
-        lakers_crypto_rustcrypto::Crypto::new(riot_rs::random::crypto_rng())
+        lakers_crypto_rustcrypto::Crypto::new(ariel_os::random::crypto_rng())
     });
 
     info!("Server is ready.");
@@ -115,7 +115,7 @@ where
     embassy_futures::join::join(
         async {
             server
-                .run(&mut sock, &mut handler, &mut riot_rs::random::fast_rng())
+                .run(&mut sock, &mut handler, &mut ariel_os::random::fast_rng())
                 .await
                 .expect("UDP error")
         },

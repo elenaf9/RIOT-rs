@@ -11,5 +11,5 @@ workspace = true
 
 [dependencies]
 embassy-executor = { workspace = true }
-riot-rs = { path = "../../src/riot-rs", features = ["external-interrupts"] }
-riot-rs-boards = { path = "../../src/riot-rs-boards" }
+ariel-os = { path = "../../src/ariel-os", features = ["external-interrupts"] }
+ariel-os-boards = { path = "../../src/ariel-os-boards" }

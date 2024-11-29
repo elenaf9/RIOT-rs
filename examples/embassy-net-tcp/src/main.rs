@@ -3,11 +3,11 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(used_with_arg)]
 
-use riot_rs::{debug::log::*, network};
+use ariel_os::{debug::log::*, network};
 
 use embedded_io_async::Write;
 
-#[riot_rs::task(autostart)]
+#[ariel_os::task(autostart)]
 async fn tcp_echo() {
     use embassy_net::tcp::TcpSocket;
     let stack = network::network_stack().await.unwrap();
@@ -54,7 +54,7 @@ async fn tcp_echo() {
     }
 }
 
-#[riot_rs::config(network)]
+#[ariel_os::config(network)]
 fn network_config() -> embassy_net::Config {
     use embassy_net::Ipv4Address;
 

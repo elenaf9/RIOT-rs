@@ -15,12 +15,12 @@ embassy-net = { workspace = true, features = ["udp"] }
 embassy-time = { workspace = true, default-features = false }
 embedded-io-async = "0.6.1"
 heapless = { workspace = true }
-riot-rs = { path = "../../src/riot-rs", features = [
+ariel-os = { path = "../../src/ariel-os", features = [
   "override-network-config",
   "random",
   "csprng",
 ] }
-riot-rs-boards = { path = "../../src/riot-rs-boards" }
+ariel-os-boards = { path = "../../src/ariel-os-boards" }
 
 coapcore.path = "../../src/lib/coapcore/"
 

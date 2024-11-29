@@ -62,8 +62,8 @@ dependencies = [
 name = "ai-c3"
 version = "0.1.0"
 dependencies = [
- "riot-rs-debug",
- "riot-rs-rt",
+ "ariel-os-debug",
+ "ariel-os-rt",
 ]
 
 [[package]]
@@ -86,6 +86,294 @@ name = "anyhow"
 version = "1.0.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c042108f3ed77fd83760a5fd79b53be043192bb3b9dba91d8c574c0ada7850c8"
+
+[[package]]
+name = "ariel-os"
+version = "0.1.0"
+dependencies = [
+ "ariel-os-bench",
+ "ariel-os-boards",
+ "ariel-os-debug",
+ "ariel-os-embassy",
+ "ariel-os-macros",
+ "ariel-os-random",
+ "ariel-os-rt",
+ "ariel-os-threads",
+ "ariel-os-utils",
+ "document-features",
+ "linkme",
+ "static_cell",
+]
+
+[[package]]
+name = "ariel-os-arch"
+version = "0.1.0"
+dependencies = [
+ "ariel-os-embassy-common",
+ "ariel-os-esp",
+ "ariel-os-nrf",
+ "ariel-os-rp",
+ "ariel-os-stm32",
+ "cfg-if",
+ "embassy-executor",
+ "embassy-hal-internal",
+ "embassy-usb",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+]
+
+[[package]]
+name = "ariel-os-bench"
+version = "0.1.0"
+dependencies = [
+ "cfg-if",
+ "cortex-m",
+ "defmt",
+ "esp-hal",
+]
+
+[[package]]
+name = "ariel-os-boards"
+version = "0.1.0"
+dependencies = [
+ "ai-c3",
+ "ariel-os-rt",
+ "cfg-if",
+ "dwm1001",
+ "espressif-esp32-c6-devkitc-1",
+ "espressif-esp32-s3-wroom-1",
+ "linkme",
+ "microbit",
+ "microbit-v2",
+ "nrf52840-mdk",
+ "nrf52840dk",
+ "nrf52dk",
+ "nrf5340dk",
+ "particle-xenon",
+ "rpi-pico",
+ "st-nucleo-f401re",
+ "st-nucleo-h755zi-q",
+ "st-nucleo-wb55",
+]
+
+[[package]]
+name = "ariel-os-chips"
+version = "0.1.0"
+dependencies = [
+ "stm32f4xx",
+]
+
+[[package]]
+name = "ariel-os-debug"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-semihosting",
+ "defmt",
+ "defmt-rtt-target",
+ "esp-println",
+ "log 0.4.22",
+ "rtt-target",
+]
+
+[[package]]
+name = "ariel-os-embassy"
+version = "0.1.0"
+dependencies = [
+ "ariel-os-arch",
+ "ariel-os-debug",
+ "ariel-os-embassy-common",
+ "ariel-os-macros",
+ "ariel-os-random",
+ "ariel-os-rt",
+ "ariel-os-threads",
+ "ariel-os-utils",
+ "cfg-if",
+ "const_panic",
+ "critical-section",
+ "embassy-embedded-hal",
+ "embassy-executor",
+ "embassy-hal-internal",
+ "embassy-net",
+ "embassy-sync 0.6.0",
+ "embassy-time",
+ "embassy-usb",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "heapless 0.8.0",
+ "linkme",
+ "once_cell",
+ "static_cell",
+]
+
+[[package]]
+name = "ariel-os-embassy-common"
+version = "0.1.0"
+dependencies = [
+ "defmt",
+ "embassy-futures",
+ "embassy-time",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "fugit",
+]
+
+[[package]]
+name = "ariel-os-esp"
+version = "0.1.0"
+dependencies = [
+ "ariel-os-debug",
+ "ariel-os-embassy-common",
+ "ariel-os-utils",
+ "cfg-if",
+ "defmt",
+ "embassy-embedded-hal",
+ "embassy-executor",
+ "embassy-time",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "esp-alloc",
+ "esp-hal",
+ "esp-hal-embassy",
+ "esp-wifi",
+ "fugit",
+ "once_cell",
+ "paste",
+]
+
+[[package]]
+name = "ariel-os-macros"
+version = "0.1.0"
+dependencies = [
+ "ariel-os",
+ "embassy-executor",
+ "enum-iterator",
+ "heapless 0.8.0",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.85",
+ "trybuild",
+]
+
+[[package]]
+name = "ariel-os-nrf"
+version = "0.1.0"
+dependencies = [
+ "ariel-os-debug",
+ "ariel-os-embassy-common",
+ "ariel-os-random",
+ "cfg-if",
+ "defmt",
+ "embassy-executor",
+ "embassy-nrf",
+ "embedded-hal-async",
+ "paste",
+ "portable-atomic",
+]
+
+[[package]]
+name = "ariel-os-random"
+version = "0.1.0"
+dependencies = [
+ "embassy-sync 0.6.0",
+ "rand_chacha",
+ "rand_core",
+ "rand_pcg",
+]
+
+[[package]]
+name = "ariel-os-rp"
+version = "0.1.0"
+dependencies = [
+ "ariel-os-debug",
+ "ariel-os-embassy-common",
+ "ariel-os-random",
+ "ariel-os-utils",
+ "cfg-if",
+ "cyw43",
+ "cyw43-pio",
+ "defmt",
+ "embassy-embedded-hal",
+ "embassy-executor",
+ "embassy-net-driver-channel",
+ "embassy-rp",
+ "embedded-hal-async",
+ "paste",
+ "static_cell",
+]
+
+[[package]]
+name = "ariel-os-rt"
+version = "0.1.0"
+dependencies = [
+ "ariel-os-boards",
+ "ariel-os-debug",
+ "ariel-os-threads",
+ "ariel-os-utils",
+ "cfg-if",
+ "cortex-m",
+ "cortex-m-rt",
+ "embassy-rp",
+ "esp-hal",
+ "linkme",
+ "portable-atomic",
+ "rtt-target",
+]
+
+[[package]]
+name = "ariel-os-runqueue"
+version = "0.1.2"
+dependencies = [
+ "defmt",
+ "hax-lib",
+]
+
+[[package]]
+name = "ariel-os-stm32"
+version = "0.1.0"
+dependencies = [
+ "ariel-os-embassy-common",
+ "ariel-os-random",
+ "cfg-if",
+ "defmt",
+ "embassy-embedded-hal",
+ "embassy-executor",
+ "embassy-stm32",
+ "embedded-hal-async",
+ "paste",
+ "portable-atomic",
+ "static_cell",
+]
+
+[[package]]
+name = "ariel-os-threads"
+version = "0.1.0"
+dependencies = [
+ "ariel-os-runqueue",
+ "ariel-os-utils",
+ "cfg-if",
+ "cortex-m",
+ "cortex-m-rt",
+ "cortex-m-semihosting",
+ "critical-section",
+ "defmt",
+ "embassy-rp",
+ "esp-hal",
+ "linkme",
+ "panic-semihosting",
+ "paste",
+ "rp-pac 6.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "static_cell",
+]
+
+[[package]]
+name = "ariel-os-utils"
+version = "0.1.0"
+dependencies = [
+ "const_panic",
+ "konst",
+]
 
 [[package]]
 name = "arrayvec"
@@ -177,24 +465,24 @@ dependencies = [
 name = "bench_sched_flags"
 version = "0.1.0"
 dependencies = [
- "riot-rs",
- "riot-rs-boards",
+ "ariel-os",
+ "ariel-os-boards",
 ]
 
 [[package]]
 name = "bench_sched_yield"
 version = "0.1.0"
 dependencies = [
- "riot-rs",
- "riot-rs-boards",
+ "ariel-os",
+ "ariel-os-boards",
 ]
 
 [[package]]
 name = "benchmark"
 version = "0.1.0"
 dependencies = [
- "riot-rs",
- "riot-rs-boards",
+ "ariel-os",
+ "ariel-os-boards",
 ]
 
 [[package]]
@@ -274,10 +562,10 @@ checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 name = "blinky"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-time",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
@@ -475,6 +763,8 @@ dependencies = [
 name = "coap"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "coap-handler",
  "coap-handler-implementations",
  "coap-message",
@@ -494,8 +784,6 @@ dependencies = [
  "hexlit",
  "lakers",
  "lakers-crypto-rustcrypto",
- "riot-rs",
- "riot-rs-boards",
  "scroll-ring",
  "static-alloc",
 ]
@@ -673,8 +961,8 @@ checksum = "013b6c2c3a14d678f38cd23994b02da3a1a1b6a5d1eedddfe63a5a5f11b13a81"
 name = "core-sizes"
 version = "0.1.0"
 dependencies = [
- "riot-rs",
- "riot-rs-boards",
+ "ariel-os",
+ "ariel-os-boards",
 ]
 
 [[package]]
@@ -804,7 +1092,7 @@ dependencies = [
 [[package]]
 name = "cyw43"
 version = "0.2.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -821,7 +1109,7 @@ dependencies = [
 [[package]]
 name = "cyw43-pio"
 version = "0.2.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "cyw43",
  "embassy-rp",
@@ -1001,11 +1289,11 @@ dependencies = [
 name = "dwm1001"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
- "riot-rs-rt",
 ]
 
 [[package]]
@@ -1037,11 +1325,11 @@ dependencies = [
 name = "embassy"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-sync 0.6.0",
  "embassy-time",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
@@ -1065,7 +1353,7 @@ dependencies = [
 [[package]]
 name = "embassy-executor"
 version = "0.6.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -1078,7 +1366,7 @@ dependencies = [
 [[package]]
 name = "embassy-executor-macros"
 version = "0.5.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1098,7 +1386,7 @@ dependencies = [
 [[package]]
 name = "embassy-hal-internal"
 version = "0.2.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -1110,6 +1398,8 @@ dependencies = [
 name = "embassy-http-server"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-net",
  "embassy-nrf",
@@ -1119,8 +1409,6 @@ dependencies = [
  "heapless 0.8.0",
  "httparse",
  "picoserve",
- "riot-rs",
- "riot-rs-boards",
  "serde",
  "static_cell",
 ]
@@ -1128,7 +1416,7 @@ dependencies = [
 [[package]]
 name = "embassy-net"
 version = "0.4.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "defmt",
  "document-features",
@@ -1145,7 +1433,7 @@ dependencies = [
 [[package]]
 name = "embassy-net-driver"
 version = "0.2.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "defmt",
 ]
@@ -1153,7 +1441,7 @@ dependencies = [
 [[package]]
 name = "embassy-net-driver-channel"
 version = "0.3.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "embassy-futures",
  "embassy-net-driver",
@@ -1164,32 +1452,32 @@ dependencies = [
 name = "embassy-net-tcp"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-net",
  "embassy-time",
  "embedded-io-async",
  "heapless 0.8.0",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
 name = "embassy-net-udp"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-net",
  "embassy-time",
  "embedded-io-async",
  "heapless 0.8.0",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
 name = "embassy-nrf"
 version = "0.2.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "bitflags 2.6.0",
  "cfg-if",
@@ -1230,7 +1518,7 @@ dependencies = [
 [[package]]
 name = "embassy-rp"
 version = "0.2.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "atomic-polyfill",
  "cfg-if",
@@ -1267,7 +1555,7 @@ dependencies = [
 [[package]]
 name = "embassy-stm32"
 version = "0.1.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "aligned",
  "bit_field",
@@ -1325,7 +1613,7 @@ dependencies = [
 [[package]]
 name = "embassy-sync"
 version = "0.6.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "cfg-if",
  "critical-section",
@@ -1357,7 +1645,7 @@ dependencies = [
 [[package]]
 name = "embassy-time-driver"
 version = "0.1.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "document-features",
 ]
@@ -1365,7 +1653,7 @@ dependencies = [
 [[package]]
 name = "embassy-time-queue-driver"
 version = "0.1.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 
 [[package]]
 name = "embassy-usb"
@@ -1386,7 +1674,7 @@ dependencies = [
 [[package]]
 name = "embassy-usb-driver"
 version = "0.1.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "defmt",
 ]
@@ -1395,13 +1683,13 @@ dependencies = [
 name = "embassy-usb-keyboard"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-nrf",
  "embassy-sync 0.6.0",
  "embassy-time",
  "embassy-usb",
- "riot-rs",
- "riot-rs-boards",
  "static_cell",
  "usbd-hid",
 ]
@@ -1409,7 +1697,7 @@ dependencies = [
 [[package]]
 name = "embassy-usb-synopsys-otg"
 version = "0.1.0"
-source = "git+https://github.com/kaspar030/embassy?branch=for-riot-rs-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
+source = "git+https://github.com/kaspar030/embassy?branch=for-ariel-os-2024-09-19#f5b06a847d8dd88be5670da888a8a888ac250f3f"
 dependencies = [
  "critical-section",
  "embassy-sync 0.6.0",
@@ -1658,7 +1946,7 @@ dependencies = [
 [[package]]
 name = "esp-alloc"
 version = "0.5.0"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "critical-section",
  "enumset",
@@ -1679,7 +1967,7 @@ dependencies = [
 [[package]]
 name = "esp-build"
 version = "0.1.0"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "quote",
  "syn 2.0.85",
@@ -1689,7 +1977,7 @@ dependencies = [
 [[package]]
 name = "esp-config"
 version = "0.1.0"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "document-features",
 ]
@@ -1697,7 +1985,7 @@ dependencies = [
 [[package]]
 name = "esp-hal"
 version = "0.21.1"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "basic-toml",
  "bitfield 0.16.1",
@@ -1721,7 +2009,7 @@ dependencies = [
  "embedded-io 0.6.1",
  "embedded-io-async",
  "enumset",
- "esp-build 0.1.0 (git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377)",
+ "esp-build 0.1.0 (git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377)",
  "esp-config",
  "esp-hal-procmacros",
  "esp-metadata",
@@ -1752,13 +2040,13 @@ dependencies = [
 [[package]]
 name = "esp-hal-embassy"
 version = "0.4.0"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "critical-section",
  "document-features",
  "embassy-executor",
  "embassy-time-driver",
- "esp-build 0.1.0 (git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377)",
+ "esp-build 0.1.0 (git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377)",
  "esp-hal",
  "esp-hal-procmacros",
  "esp-metadata",
@@ -1769,7 +2057,7 @@ dependencies = [
 [[package]]
 name = "esp-hal-procmacros"
 version = "0.14.0"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "darling",
  "document-features",
@@ -1785,7 +2073,7 @@ dependencies = [
 [[package]]
 name = "esp-metadata"
 version = "0.4.0"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "anyhow",
  "basic-toml",
@@ -1809,7 +2097,7 @@ dependencies = [
 [[package]]
 name = "esp-riscv-rt"
 version = "0.9.0"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "document-features",
  "riscv",
@@ -1832,7 +2120,7 @@ dependencies = [
 [[package]]
 name = "esp-wifi"
 version = "0.10.1"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "bt-hci",
  "cfg-if",
@@ -1845,7 +2133,7 @@ dependencies = [
  "embedded-io-async",
  "enumset",
  "esp-alloc",
- "esp-build 0.1.0 (git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377)",
+ "esp-build 0.1.0 (git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377)",
  "esp-config",
  "esp-hal",
  "esp-metadata",
@@ -1955,25 +2243,25 @@ dependencies = [
 name = "espressif-esp32-c6-devkitc-1"
 version = "0.1.0"
 dependencies = [
- "riot-rs-debug",
- "riot-rs-rt",
+ "ariel-os-debug",
+ "ariel-os-rt",
 ]
 
 [[package]]
 name = "espressif-esp32-s3-wroom-1"
 version = "0.1.0"
 dependencies = [
- "riot-rs-debug",
- "riot-rs-rt",
+ "ariel-os-debug",
+ "ariel-os-rt",
 ]
 
 [[package]]
 name = "example-random"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "rand",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
@@ -2167,31 +2455,31 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 name = "gpio"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-futures",
  "embassy-time",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
 name = "gpio-interrupt-nrf"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-time",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
 name = "gpio-interrupt-stm32"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-time",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
@@ -2338,17 +2626,17 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 name = "hello-world"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
 name = "hello-world-threading"
 version = "0.1.0"
 dependencies = [
- "riot-rs",
- "riot-rs-boards",
+ "ariel-os",
+ "ariel-os-boards",
 ]
 
 [[package]]
@@ -2409,13 +2697,13 @@ checksum = "7d71d3574edd2771538b901e6549113b4006ece66150fb69c0fb6d9a2adae946"
 name = "i2c-controller"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-sync 0.6.0",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "once_cell",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
@@ -2720,9 +3008,9 @@ dependencies = [
 name = "log"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
@@ -2756,22 +3044,22 @@ dependencies = [
 name = "microbit"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
  "cortex-m",
  "cortex-m-rt",
  "nrf51",
- "riot-rs-debug",
- "riot-rs-rt",
 ]
 
 [[package]]
 name = "microbit-v2"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
- "riot-rs-rt",
 ]
 
 [[package]]
@@ -2805,8 +3093,8 @@ dependencies = [
 name = "minimal"
 version = "0.1.0"
 dependencies = [
- "riot-rs",
- "riot-rs-boards",
+ "ariel-os",
+ "ariel-os-boards",
 ]
 
 [[package]]
@@ -2862,9 +3150,9 @@ dependencies = [
 name = "nrf51"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
  "nrf51-pac",
- "riot-rs-debug",
- "riot-rs-rt",
 ]
 
 [[package]]
@@ -2882,12 +3170,12 @@ dependencies = [
 name = "nrf52"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
  "ld-memory",
  "nrf52832-pac",
  "nrf52833-pac",
  "nrf52840-pac",
- "riot-rs-debug",
- "riot-rs-rt",
 ]
 
 [[package]]
@@ -2960,11 +3248,11 @@ dependencies = [
 name = "nrf52840-mdk"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
- "riot-rs-rt",
 ]
 
 [[package]]
@@ -2982,30 +3270,30 @@ dependencies = [
 name = "nrf52840dk"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
- "riot-rs-rt",
 ]
 
 [[package]]
 name = "nrf52dk"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
- "riot-rs-rt",
 ]
 
 [[package]]
 name = "nrf5340"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
  "ld-memory",
- "riot-rs-debug",
 ]
 
 [[package]]
@@ -3034,10 +3322,10 @@ dependencies = [
 name = "nrf5340dk"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
  "cortex-m",
  "cortex-m-rt",
  "nrf5340",
- "riot-rs-debug",
 ]
 
 [[package]]
@@ -3205,11 +3493,11 @@ dependencies = [
 name = "particle-xenon"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
  "cortex-m",
  "cortex-m-rt",
  "nrf52",
- "riot-rs-debug",
- "riot-rs-rt",
 ]
 
 [[package]]
@@ -3597,294 +3885,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "riot-rs"
-version = "0.1.0"
-dependencies = [
- "document-features",
- "linkme",
- "riot-rs-bench",
- "riot-rs-boards",
- "riot-rs-debug",
- "riot-rs-embassy",
- "riot-rs-macros",
- "riot-rs-random",
- "riot-rs-rt",
- "riot-rs-threads",
- "riot-rs-utils",
- "static_cell",
-]
-
-[[package]]
-name = "riot-rs-arch"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "embassy-executor",
- "embassy-hal-internal",
- "embassy-usb",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "riot-rs-embassy-common",
- "riot-rs-esp",
- "riot-rs-nrf",
- "riot-rs-rp",
- "riot-rs-stm32",
-]
-
-[[package]]
-name = "riot-rs-bench"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "cortex-m",
- "defmt",
- "esp-hal",
-]
-
-[[package]]
-name = "riot-rs-boards"
-version = "0.1.0"
-dependencies = [
- "ai-c3",
- "cfg-if",
- "dwm1001",
- "espressif-esp32-c6-devkitc-1",
- "espressif-esp32-s3-wroom-1",
- "linkme",
- "microbit",
- "microbit-v2",
- "nrf52840-mdk",
- "nrf52840dk",
- "nrf52dk",
- "nrf5340dk",
- "particle-xenon",
- "riot-rs-rt",
- "rpi-pico",
- "st-nucleo-f401re",
- "st-nucleo-h755zi-q",
- "st-nucleo-wb55",
-]
-
-[[package]]
-name = "riot-rs-chips"
-version = "0.1.0"
-dependencies = [
- "stm32f4xx",
-]
-
-[[package]]
-name = "riot-rs-debug"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "cortex-m-semihosting",
- "defmt",
- "defmt-rtt-target",
- "esp-println",
- "log 0.4.22",
- "rtt-target",
-]
-
-[[package]]
-name = "riot-rs-embassy"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "const_panic",
- "critical-section",
- "embassy-embedded-hal",
- "embassy-executor",
- "embassy-hal-internal",
- "embassy-net",
- "embassy-sync 0.6.0",
- "embassy-time",
- "embassy-usb",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "heapless 0.8.0",
- "linkme",
- "once_cell",
- "riot-rs-arch",
- "riot-rs-debug",
- "riot-rs-embassy-common",
- "riot-rs-macros",
- "riot-rs-random",
- "riot-rs-rt",
- "riot-rs-threads",
- "riot-rs-utils",
- "static_cell",
-]
-
-[[package]]
-name = "riot-rs-embassy-common"
-version = "0.1.0"
-dependencies = [
- "defmt",
- "embassy-futures",
- "embassy-time",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "fugit",
-]
-
-[[package]]
-name = "riot-rs-esp"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "defmt",
- "embassy-embedded-hal",
- "embassy-executor",
- "embassy-time",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "esp-alloc",
- "esp-hal",
- "esp-hal-embassy",
- "esp-wifi",
- "fugit",
- "once_cell",
- "paste",
- "riot-rs-debug",
- "riot-rs-embassy-common",
- "riot-rs-utils",
-]
-
-[[package]]
-name = "riot-rs-macros"
-version = "0.1.0"
-dependencies = [
- "embassy-executor",
- "enum-iterator",
- "heapless 0.8.0",
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "riot-rs",
- "syn 2.0.85",
- "trybuild",
-]
-
-[[package]]
-name = "riot-rs-nrf"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "defmt",
- "embassy-executor",
- "embassy-nrf",
- "embedded-hal-async",
- "paste",
- "portable-atomic",
- "riot-rs-debug",
- "riot-rs-embassy-common",
- "riot-rs-random",
-]
-
-[[package]]
-name = "riot-rs-random"
-version = "0.1.0"
-dependencies = [
- "embassy-sync 0.6.0",
- "rand_chacha",
- "rand_core",
- "rand_pcg",
-]
-
-[[package]]
-name = "riot-rs-rp"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "cyw43",
- "cyw43-pio",
- "defmt",
- "embassy-embedded-hal",
- "embassy-executor",
- "embassy-net-driver-channel",
- "embassy-rp",
- "embedded-hal-async",
- "paste",
- "riot-rs-debug",
- "riot-rs-embassy-common",
- "riot-rs-random",
- "riot-rs-utils",
- "static_cell",
-]
-
-[[package]]
-name = "riot-rs-rt"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "cortex-m",
- "cortex-m-rt",
- "embassy-rp",
- "esp-hal",
- "linkme",
- "portable-atomic",
- "riot-rs-boards",
- "riot-rs-debug",
- "riot-rs-threads",
- "riot-rs-utils",
- "rtt-target",
-]
-
-[[package]]
-name = "riot-rs-runqueue"
-version = "0.1.2"
-dependencies = [
- "defmt",
- "hax-lib",
-]
-
-[[package]]
-name = "riot-rs-stm32"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "defmt",
- "embassy-embedded-hal",
- "embassy-executor",
- "embassy-stm32",
- "embedded-hal-async",
- "paste",
- "portable-atomic",
- "riot-rs-embassy-common",
- "riot-rs-random",
- "static_cell",
-]
-
-[[package]]
-name = "riot-rs-threads"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "cortex-m",
- "cortex-m-rt",
- "cortex-m-semihosting",
- "critical-section",
- "defmt",
- "embassy-rp",
- "esp-hal",
- "linkme",
- "panic-semihosting",
- "paste",
- "riot-rs-runqueue",
- "riot-rs-utils",
- "rp-pac 6.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "static_cell",
-]
-
-[[package]]
-name = "riot-rs-utils"
-version = "0.1.0"
-dependencies = [
- "const_panic",
- "konst",
-]
-
-[[package]]
 name = "riscv"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3927,9 +3927,9 @@ dependencies = [
 name = "rp2040"
 version = "0.1.0"
 dependencies = [
- "riot-rs-debug",
- "riot-rs-embassy",
- "riot-rs-rt",
+ "ariel-os-debug",
+ "ariel-os-embassy",
+ "ariel-os-rt",
 ]
 
 [[package]]
@@ -3945,8 +3945,8 @@ dependencies = [
 name = "rpi-pico"
 version = "0.1.0"
 dependencies = [
- "riot-rs-debug",
- "riot-rs-rt",
+ "ariel-os-debug",
+ "ariel-os-rt",
  "rp2040",
 ]
 
@@ -4194,12 +4194,12 @@ dependencies = [
 name = "spi-loopback"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-sync 0.6.0",
  "embedded-hal-async",
  "once_cell",
- "riot-rs",
- "riot-rs-boards",
  "static_cell",
 ]
 
@@ -4207,12 +4207,12 @@ dependencies = [
 name = "spi-main"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-sync 0.6.0",
  "embedded-hal-async",
  "once_cell",
- "riot-rs",
- "riot-rs-boards",
  "static_cell",
 ]
 
@@ -4239,19 +4239,19 @@ dependencies = [
 name = "st-nucleo-f401re"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
  "embassy-stm32",
- "riot-rs-debug",
- "riot-rs-rt",
 ]
 
 [[package]]
 name = "st-nucleo-h755zi-q"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
+ "ariel-os-stm32",
  "embassy-stm32",
- "riot-rs-debug",
- "riot-rs-rt",
- "riot-rs-stm32",
  "stm32",
 ]
 
@@ -4259,10 +4259,10 @@ dependencies = [
 name = "st-nucleo-wb55"
 version = "0.1.0"
 dependencies = [
+ "ariel-os-debug",
+ "ariel-os-rt",
+ "ariel-os-stm32",
  "embassy-stm32",
- "riot-rs-debug",
- "riot-rs-rt",
- "riot-rs-stm32",
 ]
 
 [[package]]
@@ -4300,8 +4300,8 @@ dependencies = [
 name = "stm32"
 version = "0.1.0"
 dependencies = [
- "riot-rs-embassy",
- "riot-rs-rt",
+ "ariel-os-embassy",
+ "ariel-os-rt",
 ]
 
 [[package]]
@@ -4487,9 +4487,9 @@ dependencies = [
 name = "tests_gpio"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
@@ -4522,43 +4522,43 @@ dependencies = [
 name = "threading"
 version = "0.1.0"
 dependencies = [
- "riot-rs",
- "riot-rs-boards",
+ "ariel-os",
+ "ariel-os-boards",
 ]
 
 [[package]]
 name = "threading-channel"
 version = "0.1.0"
 dependencies = [
- "riot-rs",
- "riot-rs-boards",
+ "ariel-os",
+ "ariel-os-boards",
 ]
 
 [[package]]
 name = "threading-dynamic-prios"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "portable-atomic",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
 name = "threading-lock"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "portable-atomic",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
 name = "threading-multicore"
 version = "0.1.0"
 dependencies = [
- "riot-rs",
- "riot-rs-boards",
+ "ariel-os",
+ "ariel-os-boards",
 ]
 
 [[package]]
@@ -4723,10 +4723,10 @@ dependencies = [
 name = "usb-serial"
 version = "0.1.0"
 dependencies = [
+ "ariel-os",
+ "ariel-os-boards",
  "embassy-executor",
  "embassy-time",
- "riot-rs",
- "riot-rs-boards",
 ]
 
 [[package]]
@@ -4972,7 +4972,7 @@ dependencies = [
 [[package]]
 name = "xtensa-lx-rt"
 version = "0.17.1"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "anyhow",
  "bare-metal 1.0.0",
@@ -4990,7 +4990,7 @@ dependencies = [
 [[package]]
 name = "xtensa-lx-rt-proc-macros"
 version = "0.2.2"
-source = "git+https://github.com/kaspar030/esp-hal?branch=for-riot-rs-2024-10-16-0.21.1+pr2377#d3f7a76f55b83a1fce3a75614240786324edeed9"
+source = "git+https://github.com/kaspar030/esp-hal?branch=for-ariel-os-2024-10-16-0.21.1-pr2377#57f8ab94988f98416e28905e181524fa5c33bada"
 dependencies = [
  "darling",
  "proc-macro2",

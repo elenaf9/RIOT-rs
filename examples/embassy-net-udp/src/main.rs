@@ -3,9 +3,9 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(used_with_arg)]
 
-use riot_rs::{debug::log::*, network};
+use ariel_os::{debug::log::*, network};
 
-#[riot_rs::task(autostart)]
+#[ariel_os::task(autostart)]
 async fn udp_echo() {
     use embassy_net::udp::{PacketMetadata, UdpSocket};
     let stack = network::network_stack().await.unwrap();
@@ -59,7 +59,7 @@ async fn udp_echo() {
     }
 }
 
-#[riot_rs::config(network)]
+#[ariel_os::config(network)]
 fn network_config() -> embassy_net::Config {
     use embassy_net::Ipv4Address;
 

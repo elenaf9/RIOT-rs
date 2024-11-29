@@ -5,21 +5,21 @@ members = [
   "src/lib/rbi",
   "src/lib/ringbuffer",
   "src/lib/coapcore",
-  "src/riot-rs",
-  "src/riot-rs-arch",
-  "src/riot-rs-bench",
-  "src/riot-rs-boards",
-  "src/riot-rs-boards/nrf52",
-  "src/riot-rs-boards/nrf52840dk",
-  "src/riot-rs-chips",
-  "src/riot-rs-debug",
-  "src/riot-rs-embassy-common",
-  "src/riot-rs-esp",
-  "src/riot-rs-macros",
-  "src/riot-rs-nrf",
-  "src/riot-rs-random",
-  "src/riot-rs-rp",
-  "src/riot-rs-stm32",
+  "src/ariel-os",
+  "src/ariel-os-arch",
+  "src/ariel-os-bench",
+  "src/ariel-os-boards",
+  "src/ariel-os-boards/nrf52",
+  "src/ariel-os-boards/nrf52840dk",
+  "src/ariel-os-chips",
+  "src/ariel-os-debug",
+  "src/ariel-os-embassy-common",
+  "src/ariel-os-esp",
+  "src/ariel-os-macros",
+  "src/ariel-os-nrf",
+  "src/ariel-os-random",
+  "src/ariel-os-rp",
+  "src/ariel-os-stm32",
   "tests/benchmarks/bench_sched_flags",
   "tests/benchmarks/bench_sched_yield",
   "tests/gpio",
@@ -42,7 +42,7 @@ version = "0.1.0"
 authors = ["Kaspar Schleiser <kaspar@schleiser.de>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
-repository = "https://github.com/future-proof-iot/riot-rs"
+repository = "https://github.com/ariel-os/ariel-os"
 
 [workspace.dependencies]
 cfg-if = { version = "1.0.0" }
@@ -76,26 +76,26 @@ rp-pac = { version = "6.0", default-features = false }
 embedded-hal = { version = "1.0.0", default-features = false }
 embedded-hal-async = { version = "1.0.0", default-features = false }
 
-esp-alloc = { git = "https://github.com/kaspar030/esp-hal", branch = "for-riot-rs-2024-10-16-0.21.1+pr2377", default-features = false }
-esp-hal = { git = "https://github.com/kaspar030/esp-hal", branch = "for-riot-rs-2024-10-16-0.21.1+pr2377", default-features = false }
-esp-hal-embassy = { git = "https://github.com/kaspar030/esp-hal", branch = "for-riot-rs-2024-10-16-0.21.1+pr2377", default-features = false }
+esp-alloc = { git = "https://github.com/kaspar030/esp-hal", branch = "for-ariel-os-2024-10-16-0.21.1-pr2377", default-features = false }
+esp-hal = { git = "https://github.com/kaspar030/esp-hal", branch = "for-ariel-os-2024-10-16-0.21.1-pr2377", default-features = false }
+esp-hal-embassy = { git = "https://github.com/kaspar030/esp-hal", branch = "for-ariel-os-2024-10-16-0.21.1-pr2377", default-features = false }
 esp-println = "0.11.0"
-esp-wifi = { git = "https://github.com/kaspar030/esp-hal", branch = "for-riot-rs-2024-10-16-0.21.1+pr2377", default-features = false }
+esp-wifi = { git = "https://github.com/kaspar030/esp-hal", branch = "for-ariel-os-2024-10-16-0.21.1-pr2377", default-features = false }
 
 linkme = { version = "0.3.21", features = ["used_linker"] }
 
-riot-rs = { path = "src/riot-rs", default-features = false }
-riot-rs-arch = { path = "src/riot-rs-arch", default-features = false }
-riot-rs-bench = { path = "src/riot-rs-bench", default-features = false }
-riot-rs-boards = { path = "src/riot-rs-boards", default-features = false }
-riot-rs-debug = { path = "src/riot-rs-debug", default-features = false }
-riot-rs-embassy = { path = "src/riot-rs-embassy", default-features = false }
-riot-rs-embassy-common = { path = "src/riot-rs-embassy-common" }
-riot-rs-random = { path = "src/riot-rs-random" }
-riot-rs-rt = { path = "src/riot-rs-rt" }
-riot-rs-runqueue = { path = "src/riot-rs-runqueue" }
-riot-rs-stm32 = { path = "src/riot-rs-stm32" }
-riot-rs-utils = { path = "src/riot-rs-utils", default-features = false }
+ariel-os = { path = "src/ariel-os", default-features = false }
+ariel-os-arch = { path = "src/ariel-os-arch", default-features = false }
+ariel-os-bench = { path = "src/ariel-os-bench", default-features = false }
+ariel-os-boards = { path = "src/ariel-os-boards", default-features = false }
+ariel-os-debug = { path = "src/ariel-os-debug", default-features = false }
+ariel-os-embassy = { path = "src/ariel-os-embassy", default-features = false }
+ariel-os-embassy-common = { path = "src/ariel-os-embassy-common" }
+ariel-os-random = { path = "src/ariel-os-random" }
+ariel-os-rt = { path = "src/ariel-os-rt" }
+ariel-os-runqueue = { path = "src/ariel-os-runqueue" }
+ariel-os-stm32 = { path = "src/ariel-os-stm32" }
+ariel-os-utils = { path = "src/ariel-os-utils", default-features = false }
 
 const_panic = { version = "0.2.8", default-features = false }
 defmt = { version = "0.3.7" }
@@ -128,23 +128,23 @@ opt-level = "s"
 opt-level = 3
 
 [patch.crates-io]
-# riot-rs embassy fork
-embassy-executor = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-executor-macros = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-hal-internal = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-nrf = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-net = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-rp = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-net-driver = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-net-driver-channel = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-stm32 = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-sync = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-time-driver = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-time-queue-driver = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-usb-driver = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-embassy-usb-synopsys-otg = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-cyw43 = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
-cyw43-pio = { git = "https://github.com/kaspar030/embassy", branch = "for-riot-rs-2024-09-19" }
+# ariel-os embassy fork
+embassy-executor = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-executor-macros = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-hal-internal = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-nrf = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-net = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-rp = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-net-driver = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-net-driver-channel = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-stm32 = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-sync = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-time-driver = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-time-queue-driver = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-usb-driver = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+embassy-usb-synopsys-otg = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+cyw43 = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
+cyw43-pio = { git = "https://github.com/kaspar030/embassy", branch = "for-ariel-os-2024-09-19" }
 
 # patched to use portable-atomics <https://github.com/seanmonstar/try-lock/pull/11>
 try-lock = { git = "https://github.com/seanmonstar/try-lock", rev = "a1aadfac9840fe23672159c12af7272e44bc684c" }

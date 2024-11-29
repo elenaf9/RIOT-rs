@@ -90,7 +90,7 @@ jobs:
         run: |
           echo "LAZE_BUILDERS=ai-c3,espressif-esp32-c6-devkitc-1,espressif-esp32-s3-wroom-1,microbit-v2,nrf52840dk,nrf5340dk,rpi-pico,rpi-pico-w,st-nucleo-h755zi-q,st-nucleo-wb55" >> "$GITHUB_ENV"
 
-      - name: "riot-rs compilation test"
+      - name: "ariel-os compilation test"
         if: steps.result-cache.outputs.cache-hit != 'true'
         run: |
           sccache --start-server || true # work around https://github.com/ninja-build/ninja/issues/2052
@@ -116,19 +116,19 @@ jobs:
       # TODO: we'll eventually want to enable relevant features
       - name: Run crate tests
         run: |
-            cargo test --no-default-features --features external-interrupts,i2c,no-boards,spi -p riot-rs -p riot-rs-embassy -p riot-rs-embassy-common -p riot-rs-runqueue -p riot-rs-threads -p riot-rs-macros
+            cargo test --no-default-features --features external-interrupts,i2c,no-boards,spi -p ariel-os -p ariel-os-embassy -p ariel-os-embassy-common -p ariel-os-runqueue -p ariel-os-threads -p ariel-os-macros
             cargo test -p rbi -p ringbuffer -p coapcore
 
       # We need to set `RUSTDOCFLAGS` as well in the following jobs, because it
       # is used for doc tests.
       - name: cargo test for RP
-        run: RUSTDOCFLAGS='--cfg context="rp2040"' RUSTFLAGS='--cfg context="rp2040"' cargo test --features external-interrupts,i2c,spi,embassy-rp/rp2040 -p riot-rs-rp
+        run: RUSTDOCFLAGS='--cfg context="rp2040"' RUSTFLAGS='--cfg context="rp2040"' cargo test --features external-interrupts,i2c,spi,embassy-rp/rp2040 -p ariel-os-rp
 
       - name: cargo test for nRF
-        run: RUSTDOCFLAGS='--cfg context="nrf52840"' RUSTFLAGS='--cfg context="nrf52840"' cargo test --features external-interrupts,i2c,spi,'embassy-nrf/nrf52840' -p riot-rs-nrf
+        run: RUSTDOCFLAGS='--cfg context="nrf52840"' RUSTFLAGS='--cfg context="nrf52840"' cargo test --features external-interrupts,i2c,spi,'embassy-nrf/nrf52840' -p ariel-os-nrf
 
       - name: cargo test for STM32
-        run: RUSTDOCFLAGS='--cfg context="stm32wb55rgvx"' RUSTFLAGS='--cfg context="stm32wb55rgvx"' cargo test --features external-interrupts,i2c,spi,'embassy-stm32/stm32wb55rg' -p riot-rs-stm32
+        run: RUSTDOCFLAGS='--cfg context="stm32wb55rgvx"' RUSTFLAGS='--cfg context="stm32wb55rgvx"' cargo test --features external-interrupts,i2c,spi,'embassy-stm32/stm32wb55rg' -p ariel-os-stm32
 
   lint:
     runs-on: ubuntu-latest
@@ -144,7 +144,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.get_toolchain.outputs.toolchain }}
-          # Required for checking riot-rs-esp
+          # Required for checking ariel-os-esp
           targets: riscv32imac-unknown-none-elf
           components: clippy, rustfmt
 
@@ -176,49 +176,49 @@ jobs:
       - name: clippy
         uses: clechasseur/rs-clippy-check@v3
         with:
-          args: --verbose --locked --features no-boards,external-interrupts,spi -p riot-rs -p riot-rs-arch -p riot-rs-boards -p riot-rs-chips -p riot-rs-debug -p riot-rs-embassy -p riot-rs-embassy-common -p riot-rs-macros -p riot-rs-random -p riot-rs-rt -p riot-rs-threads -p riot-rs-utils -- --deny warnings
+          args: --verbose --locked --features no-boards,external-interrupts,spi -p ariel-os -p ariel-os-arch -p ariel-os-boards -p ariel-os-chips -p ariel-os-debug -p ariel-os-embassy -p ariel-os-embassy-common -p ariel-os-macros -p ariel-os-random -p ariel-os-rt -p ariel-os-threads -p ariel-os-utils -- --deny warnings
 
       - run: echo 'RUSTFLAGS=--cfg context="esp32c6"' >> $GITHUB_ENV
       - name: clippy for ESP32
         uses: clechasseur/rs-clippy-check@v3
         with:
-          args: --verbose --locked --target=riscv32imac-unknown-none-elf --features external-interrupts,i2c,spi,esp-hal/esp32c6,esp-hal-embassy/esp32c6 -p riot-rs-esp -- --deny warnings
+          args: --verbose --locked --target=riscv32imac-unknown-none-elf --features external-interrupts,i2c,spi,esp-hal/esp32c6,esp-hal-embassy/esp32c6 -p ariel-os-esp -- --deny warnings
 
       - run: echo 'RUSTFLAGS=--cfg context="rp2040"' >> $GITHUB_ENV
       - name: clippy for RP
         uses: clechasseur/rs-clippy-check@v3
         with:
-          args: --verbose --locked --features external-interrupts,i2c,spi,embassy-rp/rp2040 -p riot-rs-rp -- --deny warnings
+          args: --verbose --locked --features external-interrupts,i2c,spi,embassy-rp/rp2040 -p ariel-os-rp -- --deny warnings
 
       - run: echo 'RUSTFLAGS=--cfg context="nrf52840"' >> $GITHUB_ENV
       - name: clippy for nRF
         uses: clechasseur/rs-clippy-check@v3
         with:
-          args: --verbose --locked --features external-interrupts,i2c,spi,embassy-nrf/nrf52840 -p riot-rs-nrf -- --deny warnings
+          args: --verbose --locked --features external-interrupts,i2c,spi,embassy-nrf/nrf52840 -p ariel-os-nrf -- --deny warnings
 
       - run: echo 'RUSTFLAGS=--cfg context="stm32wb55rgvx"' >> $GITHUB_ENV
       - name: clippy for STM32
         uses: clechasseur/rs-clippy-check@v3
         with:
-          args: --verbose --locked --features external-interrupts,i2c,spi,embassy-stm32/stm32wb55rg -p riot-rs-stm32 -- --deny warnings
+          args: --verbose --locked --features external-interrupts,i2c,spi,embassy-stm32/stm32wb55rg -p ariel-os-stm32 -- --deny warnings
 
       # Reset `RUSTFLAGS`
       - run: echo 'RUSTFLAGS=' >> $GITHUB_ENV
 
       - name: rustdoc
-        run: RUSTDOCFLAGS='-D warnings' cargo doc -p riot-rs --features bench,csprng,executor-thread,external-interrupts,hwrng,i2c,no-boards,random,spi,threading,usb
+        run: RUSTDOCFLAGS='-D warnings' cargo doc -p ariel-os --features bench,csprng,executor-thread,external-interrupts,hwrng,i2c,no-boards,random,spi,threading,usb
 
       - name: rustdoc for ESP32
-        run: RUSTDOCFLAGS='-D warnings --cfg context="esp32c6"' cargo doc --target=riscv32imac-unknown-none-elf --features external-interrupts,i2c,spi,esp-hal/esp32c6,esp-hal-embassy/esp32c6 -p riot-rs-esp
+        run: RUSTDOCFLAGS='-D warnings --cfg context="esp32c6"' cargo doc --target=riscv32imac-unknown-none-elf --features external-interrupts,i2c,spi,esp-hal/esp32c6,esp-hal-embassy/esp32c6 -p ariel-os-esp
 
       - name: rustdoc for RP
-        run: RUSTDOCFLAGS='-D warnings --cfg context="rp2040"' cargo doc --features external-interrupts,i2c,spi,embassy-rp/rp2040 -p riot-rs-rp
+        run: RUSTDOCFLAGS='-D warnings --cfg context="rp2040"' cargo doc --features external-interrupts,i2c,spi,embassy-rp/rp2040 -p ariel-os-rp
 
       - name: rustdoc for nRF
-        run: RUSTDOCFLAGS='-D warnings --cfg context="nrf52840"' cargo doc --features external-interrupts,i2c,spi,embassy-nrf/nrf52840 -p riot-rs-nrf
+        run: RUSTDOCFLAGS='-D warnings --cfg context="nrf52840"' cargo doc --features external-interrupts,i2c,spi,embassy-nrf/nrf52840 -p ariel-os-nrf
 
       - name: rustdoc for STM32
-        run: RUSTDOCFLAGS='-D warnings --cfg context="stm32wb55rgvx"' cargo doc --features external-interrupts,i2c,spi,embassy-stm32/stm32wb55rg -p riot-rs-stm32
+        run: RUSTDOCFLAGS='-D warnings --cfg context="stm32wb55rgvx"' cargo doc --features external-interrupts,i2c,spi,embassy-stm32/stm32wb55rg -p ariel-os-stm32
 
       - name: rustfmt
         run: cargo fmt --check --all
@@ -268,7 +268,7 @@ jobs:
           fi
 
       - name: Report nightly failure
-        if: failure() && github.event_name == 'schedule' && github.repository == 'future-proof-iot/RIOT-rs'
+        if: failure() && github.event_name == 'schedule' && github.repository == 'ariel-os/ariel-os'
         uses: s3krit/matrix-message-action@v0.0.3
         with:
           room_id: ${{ secrets.MATRIX_ROOM_ID }}

@@ -1,0 +1,25 @@
+[package]
+name = "ariel-os-core"
+version = "0.1.0"
+authors = ["Kaspar Schleiser <kaspar@schleiser.de>"]
+license.workspace = true
+edition = "2021"
+
+links = "ariel-os-core"
+
+[lints]
+workspace = true
+
+[dependencies]
+critical-section.workspace = true
+ref-cast = "1.0"
+ariel-os-threads = { path = "../ariel-os-threads" }
+
+ringbuffer = { path = "../lib/ringbuffer" }
+
+[build-dependencies]
+cbindgen = "0.26.*"
+
+[dev-dependencies]
+ariel-os-boards = { path = "../ariel-os-boards" }
+ariel-os-rt = { path = "../ariel-os-rt" }

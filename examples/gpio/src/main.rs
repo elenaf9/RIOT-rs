@@ -5,10 +5,10 @@
 
 mod pins;
 
+use ariel_os::gpio::{Input, Level, Output, Pull};
 use embassy_time::{Duration, Timer};
-use riot_rs::gpio::{Input, Level, Output, Pull};
 
-#[riot_rs::task(autostart, peripherals)]
+#[ariel_os::task(autostart, peripherals)]
 async fn blinky(peripherals: pins::Peripherals) {
     let mut led1 = Output::new(peripherals.led1, Level::Low);
 

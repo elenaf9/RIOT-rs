@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory contains example applications that showcase how to use RIOT-rs.
+This directory contains example applications that showcase how to use Ariel OS.
 
 - [benchmark/](./benchmark): how to use `benchmark()`
 - [embassy-net-udp/](./embassy-net-udp): UDP echo example
@@ -11,7 +11,7 @@ This directory contains example applications that showcase how to use RIOT-rs.
 - [embassy-usb-keyboard/](./embassy-usb-keyboard): USB HID example
 - [hello-world/](./hello-world): a classic, async version
 - [hello-world-threading/](./hello-world-threading): a classic, using a thread
-- [minimal/](./minimal): minimized to the max RIOT-rs config
+- [minimal/](./minimal): minimized to the max Ariel OS config
 - [threading/](./threading): how to start and use preemptively scheduled threads
 
 ## Networking
