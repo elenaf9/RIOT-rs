@@ -29,7 +29,7 @@ Decisions within Ariel OS are made with consensus, as much as possible, among te
 
 ### Founder-leaders
 
-[Kaspar Schleiser](https://github.com/kaspar030) and [Emmanuel Baccelli](https://github.com/emmanuelsearch).
+Kaspar Schleiser and Emmanuel Baccelli.
 
 The founder-leaders are the final decision-makers. Emmanuel Baccelli is responsible for selecting team members and funding. Kaspar Schleiser is technical lead.
 
