@@ -129,8 +129,6 @@ Ariel OS is licensed under either of
 
 at your option.
 
-Copyright (C) 2020-2023 Freie Universität Berlin, Inria, Kaspar Schleiser
-
 ## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
@@ -138,10 +136,6 @@ for inclusion in the work by you, as defined in the Apache-2.0 license, shall
 be dual licensed as above, without any additional terms or conditions.
 
 Thanks to all the people who already contributed!
-
-<a href="https://github.com/ariel-os/ariel-os/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=ariel-os/ariel-os" alt="All contributors" />
-</a>
 
 [build-badge]: https://github.com/ariel-os/ariel-os/actions/workflows/main.yml/badge.svg
 [build-info]: https://github.com/ariel-os/ariel-os/actions/workflows/main.yml
