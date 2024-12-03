@@ -1,8 +1,6 @@
 # Ariel OS
-[![Build Status][build-badge]][build-info]
 [![Book][book-badge]][documentation-mdbook]
 [![Documentation][rustdoc-badge]][documentation-dev-rustdoc]
-[![Matrix][matrix-badge]][matrix-link]
 
 Ariel OS is an operating system for secure, memory-safe, low-power Internet of Things (IoT).
 Ariel OS is based on Rust from the ground up.
@@ -23,11 +21,11 @@ A powerful framework that allows to write portable embedded Rust applications wi
 
 The following assumes you have a Nordic nrf52840dk connected to your PC.
 (For other supported boards, you can find your board's name in
-[./src/ariel-os-boards/Cargo.toml](https://github.com/ariel-os/ariel-os/blob/main/src/ariel-os-boards/Cargo.toml)
+[./src/ariel-os-boards/Cargo.toml](https://anonymous.4open.science/r/ariel-os-8DBF/src/ariel-os-boards/Cargo.toml)
 and use it instead of 'nrf52840dk' in the below guidelines.)
 
 The following instructions will enable you to flash and run the [`hello-world`
-example](https://github.com/ariel-os/ariel-os/tree/main/examples/hello-world):
+example](https://anonymous.4open.science/r/ariel-os-8DBF/examples/hello-world):
 
 ### Prerequisites
 
@@ -94,8 +92,6 @@ Ariel OS is licensed under either of
 
 at your option.
 
-Copyright (C) 2020-2025 Freie Universität Berlin, Inria, Kaspar Schleiser
-
 ## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
@@ -104,14 +100,6 @@ be dual licensed as above, without any additional terms or conditions.
 
 Thanks to all the people who already contributed!
 
-<a href="https://github.com/ariel-os/ariel-os/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=ariel-os/ariel-os" alt="All contributors" />
-</a>
-
-[build-badge]: https://github.com/ariel-os/ariel-os/actions/workflows/main.yml/badge.svg
-[build-info]: https://github.com/ariel-os/ariel-os/actions/workflows/main.yml
-[matrix-badge]: https://img.shields.io/badge/chat-Matrix-brightgreen.svg
-[matrix-link]: https://matrix.to/#/#ariel-os:matrix.org
 [book-badge]: https://img.shields.io/badge/Book-%F0%9F%93%94-blue
 [rustdoc-badge]: https://img.shields.io/badge/Documentation-%F0%9F%93%94-blue
 [documentation-mdbook]: https://ariel-os.github.io/ariel-os/dev/docs/book/

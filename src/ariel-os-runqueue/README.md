@@ -36,8 +36,6 @@ ariel-os-runqueue is licensed under either of
 
 at your option.
 
-Copyright (C) 2021 Freie Universität Berlin, Inria, Kaspar Schleiser
-
 Contributing
 ------------
 

@@ -1,10 +1,4 @@
 [book]
-authors = [
-  "Kaspar Schleiser",
-  "Emmanuel Baccelli",
-  "Christian Amsüss",
-  "Elena Frank",
-]
 language = "en"
 multilingual = false
 src = "src"
