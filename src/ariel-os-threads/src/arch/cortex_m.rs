@@ -1,4 +1,4 @@
-use crate::{Arch, SCHEDULER, Thread, cleanup};
+use crate::{Arch, GlobalRunqueue, SCHEDULER, Thread, cleanup};
 use core::{arch::global_asm, ptr::write_volatile};
 use cortex_m::peripheral::{SCB, scb::SystemHandler};
 
@@ -191,14 +191,12 @@ global_asm!(
 ///
 /// - must not be called manually (only by PendSV)
 unsafe extern "C" fn sched() -> u64 {
+    let core = crate::core_id();
     let (current_high_regs, next_high_regs) = loop {
         if let Some(res) = critical_section::with(|cs| {
             let scheduler = unsafe { &mut *SCHEDULER.as_ptr(cs) };
 
-            #[cfg(feature = "multi-core")]
-            scheduler.add_current_thread_to_rq();
-
-            let next_tid = match scheduler.get_next_tid() {
+            let next_tid = match scheduler.runqueue.get_next(core) {
                 Some(tid) => tid,
                 None => {
                     #[cfg(feature = "multi-core")]

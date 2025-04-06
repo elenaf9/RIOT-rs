@@ -4,19 +4,10 @@ use esp_hal::{
     interrupt,
     peripherals::{CPU_CTRL, Interrupt, SYSTEM},
 };
-
 use static_cell::ConstStaticCell;
 
-use super::{CoreId, ISR_STACKSIZE_CORE1, Multicore};
-
-impl From<Cpu> for CoreId {
-    fn from(value: Cpu) -> Self {
-        match value {
-            Cpu::ProCpu => CoreId(0),
-            Cpu::AppCpu => CoreId(1),
-        }
-    }
-}
+use super::{ISR_STACKSIZE_CORE1, Multicore};
+use crate::CoreId;
 
 pub struct Chip;
 
@@ -25,7 +16,10 @@ impl Multicore for Chip {
     const IDLE_THREAD_STACK_SIZE: usize = 2048;
 
     fn core_id() -> CoreId {
-        esp_hal::Cpu::current().into()
+        match esp_hal::Cpu::current() {
+            Cpu::ProCpu => CoreId::new(0),
+            Cpu::AppCpu => CoreId::new(1),
+        }
     }
 
     fn startup_other_cores() {
@@ -55,8 +49,8 @@ impl Multicore for Chip {
 
     fn schedule_on_core(id: CoreId) {
         let ptr = unsafe { &*SYSTEM::PTR };
-        let mut id = id.0;
-        let already_set = match id {
+        let mut id: usize = id.into();
+        let already_set = match id.into() {
             0 => ptr
                 .cpu_intr_from_cpu_0()
                 .read()

@@ -1,24 +1,6 @@
 use crate::CoreId;
 use ariel_os_utils::usize_from_env_or;
 
-impl CoreId {
-    /// Creates a new [`CoreId`].
-    ///
-    /// # Panics
-    ///
-    /// Panics if `value` >= [`CORE_COUNT`](crate::CORE_COUNT).
-    pub fn new(value: u8) -> Self {
-        if value >= Chip::CORES as u8 {
-            panic!(
-                "Invalid CoreId {}: only core ids 0..{} available.",
-                value,
-                Chip::CORES
-            )
-        }
-        Self(value)
-    }
-}
-
 pub trait Multicore {
     /// Number of available core.
     const CORES: u32;
@@ -90,13 +72,13 @@ impl CoreAffinity {
     /// if other cores are idle or execute a lower priority thread.
     #[cfg(feature = "core-affinity")]
     pub fn one(core: CoreId) -> Self {
-        Self(1 << core.0)
+        Self(1 << usize::from(core))
     }
 
     /// Checks if the affinity mask "allows" this `core`.
     #[cfg(feature = "core-affinity")]
     pub fn contains(&self, core: CoreId) -> bool {
-        self.0 & (1 << core.0) > 0
+        self.0 & (1 << usize::from(core)) > 0
     }
 }
 

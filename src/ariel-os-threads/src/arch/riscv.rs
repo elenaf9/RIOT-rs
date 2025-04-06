@@ -1,4 +1,4 @@
-use crate::{Arch, SCHEDULER, Thread, cleanup};
+use crate::{Arch, GlobalRunqueue, SCHEDULER, Thread, cleanup};
 #[cfg(context = "esp32c6")]
 use esp_hal::peripherals::INTPRI as SYSTEM;
 #[cfg(context = "esp32c3")]
@@ -128,12 +128,10 @@ extern "C" fn FROM_CPU_INTR0(trap_frame: &mut TrapFrame) {
 /// It should only be called from inside the trap handler that is responsible for
 /// context switching.
 unsafe fn sched(trap_frame: &mut TrapFrame) {
+    let core = crate::core_id();
     loop {
         if SCHEDULER.with_mut(|mut scheduler| {
-            #[cfg(feature = "multi-core")]
-            scheduler.add_current_thread_to_rq();
-
-            let next_tid = match scheduler.get_next_tid() {
+            let next_tid = match scheduler.runqueue.get_next(core) {
                 Some(tid) => tid,
                 None => {
                     Cpu::wfi();

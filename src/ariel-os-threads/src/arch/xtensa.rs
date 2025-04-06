@@ -4,7 +4,7 @@ use esp_hal::{
     trapframe::TrapFrame,
 };
 
-use crate::{Arch, SCHEDULER, cleanup};
+use crate::{Arch, GlobalRunqueue, SCHEDULER, cleanup};
 
 pub struct Cpu;
 
@@ -103,12 +103,10 @@ extern "C" fn FROM_CPU_INTR1(trap_frame: &mut TrapFrame) {
 /// It should only be called from inside the trap handler that is responsible for
 /// context switching.
 unsafe fn sched(trap_frame: &mut TrapFrame) {
+    let core = crate::core_id();
     loop {
         if SCHEDULER.with_mut(|mut scheduler| {
-            #[cfg(feature = "multi-core")]
-            scheduler.add_current_thread_to_rq();
-
-            let Some(next_tid) = scheduler.get_next_tid() else {
+            let Some(next_tid) = scheduler.runqueue.get_next(core) else {
                 return false;
             };
 

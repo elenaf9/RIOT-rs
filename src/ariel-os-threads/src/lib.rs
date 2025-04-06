@@ -23,13 +23,16 @@
 
 #![cfg_attr(not(test), no_std)]
 #![feature(negative_impls)]
+#![feature(used_with_arg)]
 #![cfg_attr(target_arch = "xtensa", feature(asm_experimental_arch))]
-#![deny(missing_docs)]
 #![deny(clippy::pedantic)]
 // Disable indexing lints for now, possible panics are documented or rely on internally-enforced
 // invariants
 #![allow(clippy::indexing_slicing)]
 #![expect(clippy::cast_possible_truncation)]
+
+#[cfg(feature = "core-affinity")]
+compile_error!("core-affinities are not supported in \"reallocation\" variant");
 
 mod arch;
 mod autostart_thread;
@@ -58,14 +61,14 @@ pub mod events {
     pub static THREAD_START_EVENT: Event = Event::new();
 }
 
-pub use ariel_os_runqueue::{RunqueueId, ThreadId};
+pub use ariel_os_runqueue::{CoreId, RunqueueId, ThreadId};
 pub use thread_flags as flags;
 
 #[cfg(feature = "core-affinity")]
 pub use smp::CoreAffinity;
 
 use arch::{Arch, Cpu, ThreadData, schedule};
-use ariel_os_runqueue::RunQueue;
+use ariel_os_runqueue::{GlobalRunqueue, RunQueue};
 use ensure_once::EnsureOnce;
 use thread::{Thread, ThreadState};
 
@@ -81,6 +84,11 @@ use static_cell::ConstStaticCell;
 pub struct CoreAffinity {
     // Phantom field to ensure that `CoreAffinity` can never be constructed by a user.
     _phantom: core::marker::PhantomData<()>,
+}
+
+#[cfg(not(feature = "multi-core"))]
+fn schedule_on_core(_: CoreId) {
+    schedule()
 }
 
 /// The number of possible priority levels.
@@ -113,7 +121,10 @@ pub static THREAD_FNS: [ThreadFn] = [..];
 /// Struct holding all scheduler state
 struct Scheduler {
     /// Global thread runqueue.
+    #[cfg(not(feature = "multi-core"))]
     runqueue: RunQueue<SCHED_PRIO_LEVELS, THREAD_COUNT>,
+    #[cfg(feature = "multi-core")]
+    runqueue: RunQueue<SCHED_PRIO_LEVELS, THREAD_COUNT, CORE_COUNT>,
     /// The actual TCBs.
     threads: [Thread; THREAD_COUNT],
     /// `Some` when a thread is blocking another thread due to conflicting
@@ -254,34 +265,34 @@ impl Scheduler {
         }
     }
 
-    /// Sets the state of a thread and triggers the scheduler if needed.
+    /// Sets the state of a thread.
     ///
-    /// This function also handles adding/ removing the thread to the Runqueue depending
+    /// This function handles adding/ removing the thread to the Runqueue depending
     /// on its previous or new state.
     ///
     /// # Panics
     ///
     /// Panics if `tid` is >= [`THREAD_COUNT`].
-    fn set_state(&mut self, tid: ThreadId, state: ThreadState) -> ThreadState {
-        let thread = self.get_unchecked_mut(tid);
-        let old_state = core::mem::replace(&mut thread.state, state);
-        let prio = thread.prio;
-        if state == ThreadState::Running {
-            self.runqueue.add(tid, prio);
-            self.schedule_if_higher_prio(tid, prio);
-        } else if old_state == ThreadState::Running {
-            // A running thread is only set to a non-running state
-            // if it itself initiated it.
-            debug_assert_eq!(Some(tid), self.current_tid());
-
-            // On multi-core, the currently running thread is not in the runqueue
-            // anyway, so we don't need to remove it here.
-            #[cfg(not(feature = "multi-core"))]
-            self.runqueue.pop_head(tid, prio);
-
-            schedule();
-        }
-        old_state
+    fn set_state(&mut self, tid: ThreadId, state: ThreadState) -> (ThreadState, Option<CoreId>) {
+        let thread = &mut self.threads[usize::from(tid)];
+        let old_state = thread.state;
+        thread.state = state;
+        let core = match (old_state, state) {
+            (old, new) if old == new => None,
+            (_, ThreadState::Running) => self.runqueue.add(thread.tid, thread.prio),
+            (ThreadState::Running, _) => {
+                #[cfg(not(feature = "multi-core"))]
+                {
+                    self.runqueue.pop_head(thread.tid, thread.prio)
+                }
+                #[cfg(feature = "multi-core")]
+                {
+                    self.runqueue.del(thread.tid, thread.prio)
+                }
+            }
+            _ => None,
+        };
+        (old_state, core)
     }
 
     /// Returns the state of a thread.
@@ -299,194 +310,29 @@ impl Scheduler {
             .then(|| self.get_unchecked(thread_id).prio)
     }
 
-    /// Changes the priority of a thread and triggers the scheduler if needed.
-    fn set_priority(&mut self, thread_id: ThreadId, prio: RunqueueId) {
+    /// Changes the priority of a thread.
+    ///
+    /// Returns the information if the scheduler should be invoked because the runqueue order
+    /// might have changed.
+    /// `false` if the thread isn't in the runqueue (in which case the priority is still changed)
+    /// or if the new priority equals the current one.
+    fn set_priority(&mut self, thread_id: ThreadId, prio: RunqueueId) -> Option<CoreId> {
         if !self.is_valid_tid(thread_id) {
-            return;
+            return None;
         }
         let thread = self.get_unchecked_mut(thread_id);
         let old_prio = thread.prio;
         if old_prio == prio {
-            return;
+            return None;
         }
         thread.prio = prio;
         if thread.state != ThreadState::Running {
-            // No runqueue changes or scheduler invocation needed.
-            return;
+            return None;
         }
 
-        // Check if the thread is among the current threads and trigger scheduler if
-        // its prio decreased and another thread might have a higher prio now.
-        // This has to be done on multi-core **before the runqueue changes below**, because
-        // a currently running thread is not in the runqueue and therefore the runqueue changes
-        // should not be applied.
-        #[cfg(feature = "multi-core")]
-        match self.is_running(thread_id) {
-            Some(core) if prio < old_prio => return schedule_on_core(CoreId(core as u8)),
-            Some(_) => return,
-            _ => {}
-        }
-
-        // Update the runqueue.
-        if self.runqueue.peek_head(old_prio) == Some(thread_id) {
-            self.runqueue.pop_head(thread_id, old_prio);
-        } else {
-            self.runqueue.del(thread_id);
-        }
-        self.runqueue.add(thread_id, prio);
-
-        // Check & handle if the thread is among the current threads for single-core,
-        // analogous to the above multi-core implementation.
-        #[cfg(not(feature = "multi-core"))]
-        match self.is_running(thread_id) {
-            Some(_) if prio < old_prio => return schedule(),
-            Some(_) => return,
-            _ => {}
-        }
-
-        // Thread isn't running.
-        // Only schedule if the thread has a higher priority than a running one.
-        if prio > old_prio {
-            self.schedule_if_higher_prio(thread_id, prio);
-        }
-    }
-
-    /// Triggers the scheduler if the thread has a higher priority than (one of)
-    /// the running thread(s).
-    fn schedule_if_higher_prio(&mut self, _thread_id: ThreadId, prio: RunqueueId) {
-        #[cfg(not(feature = "multi-core"))]
-        match self.current().map(|t| t.prio) {
-            Some(curr_prio) if curr_prio < prio => schedule(),
-            _ => {}
-        }
-        #[cfg(feature = "multi-core")]
-        match self.lowest_running_prio(_thread_id) {
-            (core, Some(lowest_prio)) if lowest_prio < prio => schedule_on_core(core),
-            _ => {}
-        }
-    }
-
-    /// Returns `Some` if the thread is currently running on a core.
-    ///
-    /// On multi-core, the core-id is returned as usize, on single-core
-    /// the usize is always 0.
-    fn is_running(&self, thread_id: ThreadId) -> Option<usize> {
-        #[cfg(not(feature = "multi-core"))]
-        {
-            self.current_tid()
-                .filter(|tid| *tid == thread_id)
-                .map(|_| 0)
-        }
-
-        #[cfg(feature = "multi-core")]
-        {
-            self.current_threads
-                .iter()
-                .position(|tid| *tid == Some(thread_id))
-        }
-    }
-
-    /// Adds the thread that is running on the current core to the
-    /// runqueue if it has state [`ThreadState::Running`].
-    #[cfg(feature = "multi-core")]
-    #[allow(dead_code, reason = "used in scheduler implementation")]
-    fn add_current_thread_to_rq(&mut self) {
-        let Some(&mut Thread {
-            tid,
-            prio,
-            state: ThreadState::Running,
-            ..
-        }) = self.current()
-        else {
-            return;
-        };
-        self.runqueue.add(tid, prio);
-    }
-
-    /// Returns the next thread from the runqueue.
-    ///
-    /// On single-core, the thread remains in the runqueue, so subsequent calls
-    /// will return the same thread.
-    ///
-    /// On multi-core, the thread is removed so that subsequent calls will each
-    /// return a different thread. This prevents that a thread is picked multiple
-    /// times by the scheduler when it is invoked on different cores.
-    #[allow(dead_code, reason = "used in scheduler implementation")]
-    fn get_next_tid(&mut self) -> Option<ThreadId> {
-        // On single-core, only read the head of the runqueue.
-        #[cfg(not(feature = "multi-core"))]
-        {
-            self.runqueue.get_next()
-        }
-
-        // On multi-core, the head is popped of the runqueue.
-        #[cfg(all(feature = "multi-core", not(feature = "core-affinity")))]
-        {
-            self.runqueue.pop_next()
-        }
-
-        // On multi-core with core-affinities, get next thread with matching affinity.
-        #[cfg(all(feature = "multi-core", feature = "core-affinity"))]
-        {
-            // TODO: this would benefit from a `del_one_with_filter` to avoid
-            // iterating twice.
-            let next = self
-                .runqueue
-                .get_next_filter(|&t| self.is_affine_to_curr_core(t))?;
-            // Delete thread from runqueue to match the `pop_next`.
-            self.runqueue.del(next);
-            Some(next)
-        }
-    }
-
-    /// Searches for the lowest priority thread among the currently running threads.
-    ///
-    /// Returns the core that the lowest priority thread is running on, and its priority.
-    /// Returns `None` for the priority if an idle core was found, which is only the case
-    /// during startup.
-    ///
-    /// If core-affinities are enabled, the parameter `_tid` restricts the search to only
-    /// consider the cores that match this thread's [`CoreAffinity`].
-    #[cfg(feature = "multi-core")]
-    fn lowest_running_prio(&self, _tid: ThreadId) -> (CoreId, Option<RunqueueId>) {
-        #[cfg(feature = "core-affinity")]
-        let affinity = self.get_unchecked(_tid).core_affinity;
-        // Find the lowest priority thread among the currently running threads.
-        self.current_threads
-            .iter()
-            .enumerate()
-            .filter_map(|(core, tid)| {
-                let core = CoreId(core as u8);
-                // Skip cores that don't match the core-affinity.
-                #[cfg(feature = "core-affinity")]
-                if !affinity.contains(core) {
-                    return None;
-                }
-                let prio = tid.map(|tid| self.get_unchecked(tid).prio);
-                Some(((core), prio))
-            })
-            .min_by_key(|(_, rq)| *rq)
-            .unwrap()
-    }
-
-    /// Checks if a thread can be scheduled on the current core.
-    #[allow(dead_code, reason = "used in scheduler implementation")]
-    #[cfg(feature = "core-affinity")]
-    fn is_affine_to_curr_core(&self, tid: ThreadId) -> bool {
-        self.get_unchecked(tid)
-            .core_affinity
-            .contains(crate::core_id())
-    }
-}
-
-/// ID of a physical core.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct CoreId(pub(crate) u8);
-
-impl From<CoreId> for usize {
-    fn from(value: CoreId) -> Self {
-        value.0 as usize
+        let sched_after_del = self.runqueue.del(thread_id, old_prio);
+        let sched_after_add = self.runqueue.add(thread_id, prio);
+        sched_after_del.or(sched_after_add)
     }
 }
 
@@ -630,7 +476,7 @@ pub fn current_tid() -> Option<ThreadId> {
 pub fn core_id() -> CoreId {
     #[cfg(not(feature = "multi-core"))]
     {
-        CoreId(0)
+        CoreId::new(0)
     }
     #[cfg(feature = "multi-core")]
     {
@@ -658,46 +504,21 @@ fn cleanup() -> ! {
         scheduler.set_state(thread_id, ThreadState::Invalid);
     });
 
+    schedule();
+
     unreachable!();
 }
 
 /// "Yields" to another thread with the same priority.
 pub fn yield_same() {
     SCHEDULER.with_mut(|mut scheduler| {
-        let Some(&mut Thread {
-            prio,
-            tid: _tid,
-            #[cfg(feature = "core-affinity")]
-                core_affinity: _affinity,
-            ..
-        }) = scheduler.current()
-        else {
+        let Some((tid, prio)) = scheduler.current().map(|t| (t.tid, t.prio)) else {
             return;
         };
-
-        #[cfg(not(feature = "multi-core"))]
-        if scheduler.runqueue.advance(prio) {
+        if scheduler.runqueue.advance(tid, prio).is_some() {
             schedule();
         }
-
-        // On multi-core, the current thread is removed from the runqueue, and then
-        // re-added **at the tail** in `sched` the next time the scheduler is invoked.
-        // Simply triggering the scheduler therefore implicitly advances the runqueue.
-        #[cfg(feature = "multi-core")]
-        if !scheduler.runqueue.is_empty(prio) {
-            schedule();
-
-            // Check if the yielding thread can continue their execution on another
-            // core that currently runs a lower priority thread.
-            // This is only necessary when core-affinities are enabled, because only
-            // then it is possible that a lower prio thread runs while a higher prio
-            // runqueue isn't empty.
-            #[cfg(feature = "core-affinity")]
-            if _affinity == CoreAffinity::no_affinity() {
-                scheduler.schedule_if_higher_prio(_tid, prio);
-            }
-        }
-    });
+    })
 }
 
 /// Suspends/ pauses the current thread's execution.
@@ -708,6 +529,7 @@ pub fn park() {
             return;
         };
         scheduler.set_state(tid, ThreadState::Parked);
+        schedule();
     });
 }
 
@@ -721,7 +543,9 @@ pub fn unpark(thread_id: ThreadId) -> bool {
             Some(ThreadState::Parked) => {}
             _ => return false,
         }
-        scheduler.set_state(thread_id, ThreadState::Running);
+        if let Some(core_id) = scheduler.set_state(thread_id, ThreadState::Running).1 {
+            schedule_on_core(core_id);
+        }
         true
     })
 }
@@ -737,5 +561,9 @@ pub fn get_priority(thread_id: ThreadId) -> Option<RunqueueId> {
 ///
 /// This might trigger a context switch.
 pub fn set_priority(thread_id: ThreadId, prio: RunqueueId) {
-    SCHEDULER.with_mut(|mut scheduler| scheduler.set_priority(thread_id, prio));
+    SCHEDULER.with_mut(|mut scheduler| {
+        if let Some(core) = scheduler.set_priority(thread_id, prio) {
+            schedule_on_core(core);
+        }
+    })
 }

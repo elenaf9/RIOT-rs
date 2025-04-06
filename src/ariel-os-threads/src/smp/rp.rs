@@ -1,4 +1,7 @@
-use crate::arch::{Arch as _, Cpu};
+use crate::{
+    CoreId,
+    arch::{Arch as _, Cpu},
+};
 
 use cortex_m::peripheral::SCB;
 use embassy_rp::{
@@ -10,7 +13,7 @@ use embassy_rp::{
 use rp_pac::SIO;
 use static_cell::ConstStaticCell;
 
-use super::{CoreId, ISR_STACKSIZE_CORE1, Multicore};
+use super::{ISR_STACKSIZE_CORE1, Multicore};
 
 pub struct Chip;
 
@@ -18,7 +21,7 @@ impl Multicore for Chip {
     const CORES: u32 = 2;
 
     fn core_id() -> CoreId {
-        CoreId(SIO.cpuid().read() as u8)
+        CoreId::new(SIO.cpuid().read() as u8)
     }
 
     fn startup_other_cores() {

@@ -45,6 +45,35 @@ impl From<ThreadId> for usize {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct CoreId(u8);
+
+impl CoreId {
+    #[must_use]
+    pub const fn new(value: u8) -> Self {
+        Self(value)
+    }
+}
+
+impl From<CoreId> for usize {
+    fn from(value: CoreId) -> Self {
+        usize::from(value.0)
+    }
+}
+
+trait FromBitmap: Sized {
+    fn from_bitmap(bitmap: usize) -> Option<Self>;
+}
+impl FromBitmap for u8 {
+    fn from_bitmap(bitmap: usize) -> Option<Self> {
+        if bitmap == 0 {
+            return None;
+        }
+        Some(ffs(bitmap) as u8 - 1)
+    }
+}
+
 /// Runqueue for `N_QUEUES`, supporting `N_THREADS` total.
 ///
 /// Assumptions:
@@ -56,40 +85,84 @@ impl From<ThreadId> for usize {
 ///   special value)
 ///
 /// The current implementation needs an usize for the bit cache,
-/// an `[u8; N_QUEUES]` array for the list tail indexes
-/// and an `[u8; N_THREADS]` for the list next indexes.
-#[derive(Default)]
-pub struct RunQueue<const N_QUEUES: usize, const N_THREADS: usize> {
+/// an `[RunqueueId; N_QUEUES]` array for the list tail indexes
+/// and an `[ThreadId; N_THREADS]` for the list next indexes.
+pub struct RunQueue<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize = 1> {
     /// Bitcache that represents the currently used queues
     /// in `0..N_QUEUES`.
     bitcache: usize,
     queues: clist::CList<N_QUEUES, N_THREADS>,
+    next: [Option<ThreadId>; N_CORES],
 }
 
-impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_THREADS }> {
-    /// Returns a new [`RunQueue`].
+impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize>
+    RunQueue<N_QUEUES, N_THREADS, N_CORES>
+{
     #[must_use]
-    pub const fn new() -> RunQueue<{ N_QUEUES }, { N_THREADS }> {
+    pub const fn new() -> RunQueue<N_QUEUES, N_THREADS, N_CORES> {
         // unfortunately we cannot assert!() on N_QUEUES and N_THREADS,
         // as panics in const fn's are not (yet) implemented.
         RunQueue {
             bitcache: 0,
             queues: CList::new(),
+            next: [None; N_CORES],
         }
     }
 
-    /// Adds thread with tid `n` to runqueue number `rq`.
-    pub fn add(&mut self, n: ThreadId, rq: RunqueueId) {
-        debug_assert!(usize::from(n) < N_THREADS);
-        debug_assert!(usize::from(rq) < N_QUEUES);
-        self.bitcache |= 1 << rq.0;
-        self.queues.push(n.0, rq.0);
+    /// Returns the `n` highest priority threads in the [`RunQueue`].
+    ///
+    /// This iterates through all non-empty runqueues with descending
+    /// priority, until `N_CORES` threads have been found or all
+    /// queues have been checked.
+    ///
+    /// Complexity is O(n).
+    fn get_next_n(&self) -> [Option<ThreadId>; N_CORES] {
+        let mut next_list = [None; N_CORES];
+        let mut bitcache = self.bitcache;
+        // Get head from highest priority queue.
+        let mut head = match self.peek_bitcache_head(bitcache) {
+            Some(head) => {
+                next_list[0] = Some(head);
+                head.0
+            }
+            None => return next_list,
+        };
+        let mut thread = head;
+        // Iterate through threads in the queue.
+        for i in 1..N_CORES {
+            thread = self.queues.peek_next(thread);
+            if thread == head {
+                // Switch to next runqueue.
+                bitcache &= !(1 << (ffs(bitcache) - 1));
+                head = match self.peek_bitcache_head(bitcache) {
+                    Some(h) => h.0,
+                    // Early return instead of break, to make hax happy.
+                    None => return next_list,
+                };
+                thread = head;
+            };
+            next_list[i] = Some(ThreadId(thread));
+        }
+        next_list
     }
 
-    /// Returns the head of the runqueue without removing it.
-    pub fn peek_head(&self, rq: RunqueueId) -> Option<ThreadId> {
-        self.queues.peek_head(rq.0).map(ThreadId::new)
+    fn peek_bitcache_head(&self, bitcache: usize) -> Option<ThreadId> {
+        // Switch to highest priority runqueue remaining
+        // in the bitcache.
+        let rq = match u8::from_bitmap(bitcache) {
+            Some(rq) => rq,
+            None => return None,
+        };
+        self.queues.peek_head(rq).map(ThreadId::new)
     }
+}
+
+pub trait GlobalRunqueue<const N_CORES: usize> {
+    /// Adds thread with tid `n` to runqueue number `rq`.
+    ///
+    /// Returns a [`CoreId`] if the allocation for this core changed.
+    ///
+    fn add(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId>;
 
     /// Removes thread with tid `n` from runqueue number `rq`.
     ///
@@ -97,149 +170,209 @@ impl<const N_QUEUES: usize, const N_THREADS: usize> RunQueue<{ N_QUEUES }, { N_T
     ///
     /// Panics if `n` is not the queue's head.
     /// This is fine, Ariel OS only ever calls `pop_head()` for the current thread.
-    pub fn pop_head(&mut self, n: ThreadId, rq: RunqueueId) {
-        debug_assert!(usize::from(n) < N_THREADS);
-        debug_assert!(usize::from(rq) < N_QUEUES);
-        let popped = self.queues.pop_head(rq.0);
-        //
-        assert_eq!(popped, Some(n.0));
-        if self.queues.is_empty(rq.0) {
-            self.bitcache &= !(1 << rq.0);
-        }
-    }
+    fn pop_head(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId>;
 
-    /// Removes thread with tid `n`.
-    pub fn del(&mut self, n: ThreadId) {
-        if let Some(empty_runqueue) = self.queues.del(n.0) {
-            self.bitcache &= !(1 << empty_runqueue);
-        }
-    }
-
-    /// Returns the tid that should run next.
+    /// Removes thread with tid `n` from runqueue number `rq`.
     ///
-    /// Returns the next runnable thread of
-    /// the runqueue with the highest index.
-    #[must_use]
-    pub fn get_next(&self) -> Option<ThreadId> {
-        self.get_next_with_rq().map(|(tid, _)| tid)
-    }
-
-    /// Returns the tid that should run next and the runqueue it is in.
-    #[must_use]
-    pub fn get_next_with_rq(&self) -> Option<(ThreadId, RunqueueId)> {
-        let rq_ffs = ffs(self.bitcache);
-        if rq_ffs == 0 {
-            return None;
-        }
-        let rq = rq_ffs as u8 - 1;
-        self.queues
-            .peek_head(rq)
-            .map(|id| (ThreadId::new(id), RunqueueId::new(rq)))
-    }
-
-    /// Returns the next thread from the runqueue that fulfills the predicate.
-    pub fn get_next_filter<F: FnMut(&ThreadId) -> bool>(
-        &self,
-        mut predicate: F,
-    ) -> Option<ThreadId> {
-        let (next, prio) = self.get_next_with_rq()?;
-        if predicate(&next) {
-            return Some(next);
-        }
-        self.iter_from(next, prio).find(predicate)
-    }
-
-    /// Pop the thread that should run next.
+    /// Returns a [`CoreId`] if the allocation for this core changed.
     ///
-    /// Pops the next runnable thread of
-    /// the runqueue with the highest index.
-    pub fn pop_next(&mut self) -> Option<ThreadId> {
-        let rq_ffs = ffs(self.bitcache);
-        if rq_ffs == 0 {
-            return None;
-        }
-        let rq = (rq_ffs - 1) as u8;
-        let head = self.queues.pop_head(rq).map(ThreadId::new);
-        if self.queues.is_empty(rq) {
-            self.bitcache &= !(1 << rq);
-        }
-        head
-    }
+    /// # Panics
+    ///
+    /// Panics for `N_CORES == 1` if `n` is not the queue's head.
+    /// This is fine, Ariel OS only ever calls `del()` for the current thread.
+    fn del(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId>;
 
-    /// Advances runqueue number `rq`.
+    /// Advances from thread `n` in runqueue number `rq`.
     ///
     /// This is used to "yield" to another thread of *the same* priority.
     ///
-    /// Returns `false` if the operation had no effect, i.e. when the runqueue
-    /// is empty or only contains a single thread.
-    pub fn advance(&mut self, rq: RunqueueId) -> bool {
-        debug_assert!((usize::from(rq)) < N_QUEUES);
-        self.queues.advance(rq.0)
-    }
-
-    /// Checks if a runqueue is empty.
-    pub fn is_empty(&mut self, rq: RunqueueId) -> bool {
-        debug_assert!((rq.0 as usize) < N_QUEUES);
-        self.queues.is_empty(rq.0)
-    }
-
-    /// Returns an iterator over the [`RunQueue`], starting after thread `start` in runqueue `rq`.
+    /// Returns a [`CoreId`] if the allocation for this core changed.
     ///
-    /// The `start` is not included in the iterator.
-    #[must_use]
-    pub fn iter_from(&self, start: ThreadId, rq: RunqueueId) -> RunQueueIter<N_QUEUES, N_THREADS> {
-        RunQueueIter {
-            prev: start.0,
-            rq_head: self.queues.peek_head(rq.0),
-            // Clear higher priority runqueues.
-            bitcache: self.bitcache % (1 << (rq.0 + 1)),
-            queues: &self.queues,
+    /// **Warning: If `n` it not head if the run queue, this changes
+    /// the order of the queue because the thread is moved to the
+    /// tail.**
+    fn advance(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId>;
+
+    /// Update `self.next` so that the highest `N_CORES` threads
+    /// are allocated.
+    ///
+    /// This only changes allocations if a thread was previously allocated
+    /// and is now not part of the new list anymore, or the other way around.
+    /// It assumes that there was maximum one change in the runqueue since the
+    /// last reallocation (only one add/ delete or a runqueue advancement)!
+    ///
+    /// Returns a [`CoreId`] if the allocation for this core changed.
+    fn reallocate(&mut self) -> Option<CoreId>;
+
+    /// Returns the next thread that should run on this core.
+    fn get_next(&self, core: CoreId) -> Option<ThreadId>;
+}
+
+impl<const N_QUEUES: usize, const N_THREADS: usize, const N_CORES: usize> GlobalRunqueue<N_CORES>
+    for RunQueue<N_QUEUES, N_THREADS, N_CORES>
+{
+    default fn add(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
+        debug_assert!(usize::from(n) < N_THREADS);
+        debug_assert!(usize::from(rq) < N_QUEUES);
+        self.bitcache |= 1 << rq.0;
+        self.queues.push(n.0, rq.0);
+        self.reallocate()
+    }
+
+    default fn pop_head(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
+        debug_assert!(usize::from(n) < N_THREADS);
+        debug_assert!(usize::from(rq) < N_QUEUES);
+        let popped = self.queues.pop_head(rq.0);
+        debug_assert_eq!(popped, Some(n.0));
+        if self.queues.is_empty(rq.0) {
+            self.bitcache &= !(1 << rq.0);
         }
+        self.reallocate()
+    }
+
+    default fn del(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
+        if self.queues.peek_head(rq.0) == Some(n.0) {
+            self.pop_head(n, rq)
+        } else {
+            if let Some(empty_runqueue) = self.queues.del(n.0) {
+                self.bitcache &= !(1 << empty_runqueue);
+            }
+            if !self.next.contains(&Some(n)) {
+                return None;
+            }
+            self.reallocate()
+        }
+    }
+
+    default fn advance(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
+        debug_assert!((rq.0 as usize) < N_QUEUES);
+        if self.queues.peek_head(rq.0) == Some(n.0) {
+            if !self.queues.advance(rq.0) {
+                return None;
+            }
+        } else {
+            // If the thread is not the head remove it
+            // from queue and re-insert it at tail.
+            self.queues.del(n.0);
+            self.queues.push(n.0, rq.0);
+        }
+        self.reallocate()
+    }
+
+    default fn reallocate(&mut self) -> Option<CoreId> {
+        let next = self.get_next_n();
+        let mut bitmap_next = 0;
+        let mut bitmap_allocated = 0;
+        for i in 0..N_CORES {
+            if let Some(id) = next[i] {
+                bitmap_next |= 1 << id.0
+            }
+            if let Some(id) = self.next[i] {
+                bitmap_allocated |= 1 << id.0
+            }
+        }
+        if bitmap_next == bitmap_allocated {
+            return None;
+        }
+        let diff = bitmap_next ^ bitmap_allocated;
+        let prev_allocated = u8::from_bitmap(bitmap_allocated & diff).map(ThreadId);
+        let new_allocated = u8::from_bitmap(bitmap_next & diff).map(ThreadId);
+
+        let changed_core = self.next.iter().position(|i| *i == prev_allocated).unwrap();
+        self.next[changed_core] = new_allocated;
+        return Some(CoreId(changed_core as u8));
+    }
+
+    default fn get_next(&self, core: CoreId) -> Option<ThreadId> {
+        debug_assert!(
+            (core.0 as usize) < N_CORES,
+            "CoreId should be < {}",
+            N_CORES
+        );
+        self.next[usize::from(core)]
+    }
+}
+
+impl<const N_QUEUES: usize, const N_THREADS: usize> GlobalRunqueue<1>
+    for RunQueue<N_QUEUES, N_THREADS>
+{
+    fn add(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
+        debug_assert!(usize::from(n) < N_THREADS);
+        debug_assert!(usize::from(rq) < N_QUEUES);
+        let bitcache = self.bitcache;
+        self.bitcache |= 1 << rq.0;
+        self.queues.push(n.0, rq.0);
+        if self.bitcache == bitcache {
+            return None;
+        }
+        self.reallocate()
+    }
+
+    fn advance(&mut self, _: ThreadId, rq: RunqueueId) -> Option<CoreId> {
+        debug_assert!((rq.0 as usize) < N_QUEUES);
+        if self.queues.advance(rq.0) {
+            self.reallocate()
+        } else {
+            None
+        }
+    }
+
+    fn reallocate(&mut self) -> Option<CoreId> {
+        let next = self.peek_bitcache_head(self.bitcache);
+        if self.next[0] == next {
+            return None;
+        }
+        self.next[0] = next;
+        Some(CoreId(0))
+    }
+}
+
+impl<const N_QUEUES: usize, const N_THREADS: usize> GlobalRunqueue<2>
+    for RunQueue<N_QUEUES, N_THREADS, 2>
+{
+    fn reallocate(&mut self) -> Option<CoreId> {
+        let next = self.get_next_n();
+
+        if self.next[0] == next[0] {
+            if self.next[1] == next[1] {
+                return None;
+            }
+            self.next[1] = next[1];
+            return Some(CoreId(1));
+        }
+        if self.next[1] == next[0] {
+            if self.next[0] == next[1] {
+                return None;
+            }
+            self.next[0] = next[1];
+            return Some(CoreId(0));
+        }
+        if self.next[1] == next[1] {
+            self.next[0] = next[0];
+            return Some(CoreId(0));
+        } else {
+            self.next[1] = next[0];
+            Some(CoreId(1))
+        }
+    }
+
+    fn advance(&mut self, n: ThreadId, rq: RunqueueId) -> Option<CoreId> {
+        debug_assert!((rq.0 as usize) < N_QUEUES);
+        if self.queues.peek_head(rq.0) == Some(n.0) {
+            self.queues.advance(rq.0);
+        } else {
+            // If the thread is not the head remove it
+            // from queue and re-insert it at tail.
+            self.queues.pop_next(rq.0);
+            self.queues.push(n.0, rq.0);
+        }
+        self.reallocate()
     }
 }
 
 #[inline]
 fn ffs(val: usize) -> u32 {
     USIZE_BITS as u32 - val.leading_zeros()
-}
-
-/// Iterator over threads in a [`RunQueue`].
-///
-/// It starts from the highest priority queue and continues switching to lower
-/// priority queues after circling through a queue once, until all queues
-/// that are included in this iterator have been iterated.
-pub struct RunQueueIter<'a, const N_QUEUES: usize, const N_THREADS: usize> {
-    queues: &'a clist::CList<N_QUEUES, N_THREADS>,
-    // Predecessor in the circular runqueue list.
-    prev: u8,
-    // Head of the currently iterated runqueue.
-    rq_head: Option<u8>,
-    // Bitcache with the remaining queues that have to be iterated.
-    bitcache: usize,
-}
-
-impl<const N_QUEUES: usize, const N_THREADS: usize> Iterator
-    for RunQueueIter<'_, { N_QUEUES }, { N_THREADS }>
-{
-    type Item = ThreadId;
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut next = self.queues.peek_next(self.prev);
-        if next == self.rq_head? {
-            // Circled through whole queue, so switch to next one.
-            let rq = ffs(self.bitcache) as u8 - 1;
-            // Clear current runqueue from bitcache.
-            self.bitcache &= !(1 << rq);
-            // Get head from remaining highest priority runqueue.
-            self.rq_head = if self.bitcache > 0 {
-                self.queues.peek_head(ffs(self.bitcache) as u8 - 1)
-            } else {
-                None
-            };
-            next = self.rq_head?;
-        }
-        self.prev = next;
-        Some(ThreadId(next))
-    }
 }
 
 mod clist {
@@ -369,6 +502,18 @@ mod clist {
             }
             self.tail[rq as usize] = head;
             true
+        }
+
+        /// Remove next thread after head in runqueue.
+        pub fn pop_next(&mut self, rq: u8) -> Option<u8> {
+            let head = self.peek_head(rq)?;
+            let next = self.peek_next(head);
+            if next == head {
+                return None;
+            }
+            self.next_idxs[head as usize] = self.next_idxs[next as usize];
+            self.next_idxs[next as usize] = Self::sentinel();
+            Some(next)
         }
     }
 

@@ -106,7 +106,9 @@ impl Scheduler {
             ThreadState::FlagBlocked(WaitMode::All(bits)) if thread.flags & bits == bits => {}
             _ => return,
         }
-        self.set_state(thread_id, ThreadState::Running);
+        if let (_, Some(core_id)) = self.set_state(thread_id, ThreadState::Running) {
+            crate::schedule_on_core(core_id);
+        }
     }
 
     /// # Panics
@@ -120,6 +122,7 @@ impl Scheduler {
         } else {
             let thread_id = thread.tid;
             self.set_state(thread_id, ThreadState::FlagBlocked(WaitMode::All(mask)));
+            crate::schedule();
             None
         }
     }
@@ -136,6 +139,7 @@ impl Scheduler {
         } else {
             let thread_id = thread.tid;
             self.set_state(thread_id, ThreadState::FlagBlocked(WaitMode::Any(mask)));
+            crate::schedule();
             None
         }
     }
@@ -154,6 +158,7 @@ impl Scheduler {
         } else {
             let thread_id = thread.tid;
             self.set_state(thread_id, ThreadState::FlagBlocked(WaitMode::Any(mask)));
+            crate::schedule();
             None
         }
     }

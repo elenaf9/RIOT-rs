@@ -45,6 +45,8 @@ impl ThreadList {
                 Some(prio)
             };
             scheduler.set_state(tid, state);
+            crate::schedule();
+
             inherit_priority
         })
     }
@@ -59,7 +61,10 @@ impl ThreadList {
         let head = self.head?;
         SCHEDULER.with_mut_cs(cs, |mut scheduler| {
             self.head = scheduler.thread_blocklist[usize::from(head)].take();
-            let old_state = scheduler.set_state(head, ThreadState::Running);
+            let (old_state, core_id) = scheduler.set_state(head, ThreadState::Running);
+            if let Some(core_id) = core_id {
+                crate::schedule_on_core(core_id);
+            }
             Some((head, old_state))
         })
     }
